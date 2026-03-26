@@ -9,19 +9,41 @@ import pandas as pd
 from app.models.label import Label
 
 
-REQUIRED_COLUMNS = {"Supplier", "Store", "PO", "Description", "SAP"}
+REQUIRED_COLUMN_MAP = {
+    "supplier": ["supplier"],
+    "store": ["store", "store #"],
+    "po": ["po", "po #"],
+    "description": ["description"],
+    "sap": ["sap", "sap #"],
+}
 
 
-def _normalize_column_names(columns: list[str]) -> list[str]:
-    """Strip whitespace from Excel headers."""
-    return [col.strip() for col in columns]
+def _normalize_header(header: str) -> str:
+    return header.strip().lower()
 
 
-def _validate_headers(columns: list[str]) -> None:
-    """Ensure required columns exist exactly."""
-    missing = REQUIRED_COLUMNS - set(columns)
-    if missing:
-        raise ValueError(f"Missing required columns: {', '.join(sorted(missing))}")
+def _resolve_columns(columns: list[str]) -> dict[str, str]:
+    """
+    Map actual Excel headers to required logical fields.
+    Accepts minor header variations (case, spaces, optional #).
+    """
+    normalized = {_normalize_header(col): col for col in columns}
+
+    resolved: dict[str, str] = {}
+
+    for logical_name, variations in REQUIRED_COLUMN_MAP.items():
+        for variant in variations:
+            if variant in normalized:
+                resolved[logical_name] = normalized[variant]
+                break
+
+        if logical_name not in resolved:
+            raise ValueError(
+                f"Missing required column for '{logical_name}'. "
+                f"Accepted names: {variations}"
+            )
+
+    return resolved
 
 
 def _coerce_to_string(value: Any) -> str:
@@ -67,17 +89,16 @@ def read_excel(file: Any) -> list[Label]:
     """
     df = pd.read_excel(file, dtype=str)
 
-    df.columns = _normalize_column_names(df.columns.tolist())
-    _validate_headers(df.columns.tolist())
+    column_map = _resolve_columns(df.columns.tolist())
 
     labels: list[Label] = []
 
     for _, row in df.iterrows():
-        supplier = _coerce_to_string(row["Supplier"]).strip()
-        store = _coerce_to_string(row["Store"]).strip()
-        po = _coerce_to_string(row["PO"]).strip()
-        description = _coerce_to_string(row["Description"]).strip()
-        sap = _coerce_to_string(row["SAP"]).strip()
+        supplier = _coerce_to_string(row[column_map["supplier"]]).strip()
+        store = _coerce_to_string(row[column_map["store"]]).strip()
+        po = _coerce_to_string(row[column_map["po"]]).strip()
+        description = _coerce_to_string(row[column_map["description"]]).strip()
+        sap = _coerce_to_string(row[column_map["sap"]]).strip()
 
         if not po:
             raise ValueError("PO cannot be empty.")
