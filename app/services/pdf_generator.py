@@ -17,71 +17,124 @@ from app.utils.formatting import drop_leading_zeros, sanitize_text
 PAGE_WIDTH, PAGE_HEIGHT = letter
 
 
-def _draw_static_text(c: canvas.Canvas) -> None:
-    """Render static content that does not change per label."""
+def _draw_wrapped_text(
+    c: canvas.Canvas,
+    text: str,
+    x: float,
+    y: float,
+    max_width: float,
+    line_height: float,
+    max_lines: int = 2,
+) -> float:
+    """Draw wrapped text with controlled line count."""
+    words = text.split()
+    lines: list[str] = []
+    current = ""
+
+    for word in words:
+        test_line = f"{current} {word}".strip()
+        if c.stringWidth(test_line, "Helvetica", 12) <= max_width:
+            current = test_line
+        else:
+            lines.append(current)
+            current = word
+
+        if len(lines) >= max_lines:
+            break
+
+    if current and len(lines) < max_lines:
+        lines.append(current)
+
+    for line in lines:
+        c.drawString(x, y, line)
+        y -= line_height
+
+    return y
+
+
+def _draw_label_page(c: canvas.Canvas, label: Label) -> None:
+    """Draw a single label page matching original layout structure."""
+
+    left_margin = 1.0 * inch
+    y = PAGE_HEIGHT - 1.0 * inch
+    line_gap = 0.28 * inch
 
     c.setFont("Helvetica", 12)
 
-    c.drawString(1 * inch, PAGE_HEIGHT - 1 * inch, "ATTN: Dept. Mgr. Dept#: 5")
-    c.drawString(1 * inch, PAGE_HEIGHT - 1.25 * inch, "ELECTRONICS DEPARTMENT")
+    # 1️⃣ Shipper (Top)
+    c.drawString(left_margin, y, f"Shipper: {sanitize_text(label.supplier)}")
+    y -= line_gap
 
-    c.drawString(1 * inch, PAGE_HEIGHT - 1.75 * inch, "CONTENTS: SIGNAGE KITS")
-    c.drawString(1 * inch, PAGE_HEIGHT - 6.75 * inch, "CAT: ELECTRONICS DEPT.")
-    c.drawString(1 * inch, PAGE_HEIGHT - 7.0 * inch, "QTY: 1")
+    # 2️⃣ Static ATTN + Dept
+    c.drawString(left_margin, y, "ATTN: Dept. Mgr. Dept#: 5")
+    y -= line_gap
 
-    footer_text = "Tara Webb 501-454-6407"
+    c.drawString(left_margin, y, "ELECTRONICS DEPARTMENT")
+    y -= line_gap
 
-    c.setFont("Helvetica", 10)
-    c.drawString(1 * inch, 1.25 * inch, footer_text)
+    # 3️⃣ Store
+    c.drawString(left_margin, y, f"STORE #: {sanitize_text(label.store)}")
+    y -= line_gap
 
+    # 4️⃣ Contents
+    c.drawString(left_margin, y, "CONTENTS: SIGNAGE KITS")
+    y -= line_gap
 
-def _draw_label_fields(c: canvas.Canvas, label: Label) -> None:
-    """Render dynamic label fields."""
-
-    c.setFont("Helvetica", 12)
-
-    y_cursor = PAGE_HEIGHT - 2.25 * inch
-
-    # Shipper
-    c.drawString(1 * inch, y_cursor, f"Shipper: {sanitize_text(label.supplier)}")
-    y_cursor -= 0.5 * inch
-
-    # Store
-    c.drawString(1 * inch, y_cursor, f"STORE #: {sanitize_text(label.store)}")
-    y_cursor -= 0.5 * inch
-
-    # PO (display without leading zeros)
+    # 5️⃣ PO
     po_display = drop_leading_zeros(label.po)
-    c.drawString(1 * inch, y_cursor, f"PO #: {po_display}")
-    y_cursor -= 0.75 * inch
+    c.drawString(left_margin, y, f"PO #: {po_display}")
+    y -= 0.35 * inch
 
-    # PO Barcode
+    # PO Barcode (tight placement)
     po_barcode = generate_code128_barcode(label.po)
-    renderPDF.draw(po_barcode, c, 1 * inch, y_cursor)
-    y_cursor -= 1.5 * inch
+    renderPDF.draw(po_barcode, c, left_margin, y)
+    y -= 0.9 * inch
 
-    # Description
-    c.drawString(1 * inch, y_cursor, "Desc:")
-    y_cursor -= 0.4 * inch
+    # 6️⃣ Description
+    c.drawString(left_margin, y, "Desc:")
+    y -= 0.25 * inch
 
-    description = sanitize_text(label.description)
-    if description:
-        c.drawString(1 * inch, y_cursor, description)
-        y_cursor -= 0.5 * inch
+    y = _draw_wrapped_text(
+        c,
+        sanitize_text(label.description),
+        left_margin,
+        y,
+        max_width=4.5 * inch,
+        line_height=0.25 * inch,
+        max_lines=2,
+    )
 
-    # SAP
-    c.drawString(1 * inch, y_cursor, f"SAP #: {sanitize_text(label.sap)}")
-    y_cursor -= 0.75 * inch
+    y -= 0.15 * inch
 
-    # SAP Barcode (always 10 digits due to normalization)
+    # 7️⃣ SAP
+    c.drawString(left_margin, y, f"SAP #: {sanitize_text(label.sap)}")
+    y -= 0.35 * inch
+
+    # SAP Barcode
     sap_barcode = generate_code128_barcode(label.sap)
-    renderPDF.draw(sap_barcode, c, 1 * inch, y_cursor)
+    renderPDF.draw(sap_barcode, c, left_margin, y)
+    y -= 0.9 * inch
+
+    # 8️⃣ Category + Quantity
+    c.drawString(left_margin, y, "CAT: ELECTRONICS DEPT.")
+    y -= line_gap
+
+    c.drawString(left_margin, y, "QTY: 1")
+    y -= 0.5 * inch
+
+    # 9️⃣ Footer
+    c.setFont("Helvetica", 10)
+    c.drawString(
+        left_margin,
+        y,
+        "For questions or additional information, call",
+    )
+    y -= 0.22 * inch
+    c.drawString(left_margin, y, "Tara Webb 501-454-6407")
 
 
 def generate_label_pdf(labels: list[Label]) -> bytes:
-    """
-    Generate a letter-sized PDF with one label per page.
-    """
+    """Generate a letter-sized PDF with one label per page."""
 
     if not labels:
         raise ValueError("No labels provided for PDF generation.")
@@ -90,8 +143,7 @@ def generate_label_pdf(labels: list[Label]) -> bytes:
     c = canvas.Canvas(buffer, pagesize=letter)
 
     for label in labels:
-        _draw_static_text(c)
-        _draw_label_fields(c, label)
+        _draw_label_page(c, label)
         c.showPage()
 
     c.save()
