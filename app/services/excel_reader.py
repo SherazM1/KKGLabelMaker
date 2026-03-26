@@ -77,6 +77,30 @@ def _validate_barcode_field(value: str, field_name: str) -> None:
         )
 
 
+def _normalize_sap(value: str) -> str:
+    """
+    Normalize SAP to a 10-digit string.
+    Accepts 9 or 10 digit numeric values.
+    Pads 9-digit values with leading zero.
+    """
+    cleaned = value.strip()
+
+    if not cleaned.isdigit():
+        raise ValueError(f"SAP must be numeric. Got '{value}'.")
+
+    length = len(cleaned)
+
+    if length == 10:
+        return cleaned
+
+    if length == 9:
+        return cleaned.zfill(10)
+
+    raise ValueError(
+        f"SAP must be 9 or 10 digits. Got '{value}' ({length} digits)."
+    )
+
+
 def read_excel(file: Any) -> list[Label]:
     """
     Read an Excel file-like object and return label records.
@@ -98,15 +122,15 @@ def read_excel(file: Any) -> list[Label]:
         store = _coerce_to_string(row[column_map["store"]]).strip()
         po = _coerce_to_string(row[column_map["po"]]).strip()
         description = _coerce_to_string(row[column_map["description"]]).strip()
-        sap = _coerce_to_string(row[column_map["sap"]]).strip()
+        sap_raw = _coerce_to_string(row[column_map["sap"]]).strip()
+        sap = _normalize_sap(sap_raw)
 
         if not po:
             raise ValueError("PO cannot be empty.")
-        if not sap:
+        if not sap_raw:
             raise ValueError("SAP cannot be empty.")
 
         _validate_barcode_field(po, "PO")
-        _validate_barcode_field(sap, "SAP")
 
         labels.append(
             Label(
