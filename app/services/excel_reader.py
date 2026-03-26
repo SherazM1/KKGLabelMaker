@@ -47,46 +47,27 @@ def _resolve_columns(columns: list[str]) -> dict[str, str]:
 
 
 def _coerce_to_string(value: Any) -> str:
-    """
-    Convert Excel cell value to string safely.
-
-    Preserves leading zeros when Excel column is text.
-    Converts numeric cells without scientific notation.
-    """
     if pd.isna(value):
         return ""
-
-    # If numeric (float/int), convert without decimal .0
-    if isinstance(value, (int, float)):
-        # Avoid scientific notation
-        return str(int(value))
-
-    return str(value)
+    return str(value).strip()
 
 
-def _validate_barcode_field(value: str, field_name: str) -> None:
-    """
-    Validate barcode field length.
-
-    Must be exactly 10 characters.
-    Allows alphanumeric for future safety.
-    """
-    if len(value) != 10:
-        raise ValueError(
-            f"{field_name} must be exactly 10 characters. Got '{value}' ({len(value)} chars)."
-        )
-
-
-def _normalize_sap(value: str) -> str:
+def _normalize_sap(value: str, row_number: int) -> str:
     """
     Normalize SAP to a 10-digit string.
     Accepts 9 or 10 digit numeric values.
     Pads 9-digit values with leading zero.
     """
+
     cleaned = value.strip()
 
+    if not cleaned:
+        raise ValueError(f"Row {row_number}: SAP is blank.")
+
     if not cleaned.isdigit():
-        raise ValueError(f"SAP must be numeric. Got '{value}'.")
+        raise ValueError(
+            f"Row {row_number}: SAP must be numeric. Got '{value}'."
+        )
 
     length = len(cleaned)
 
@@ -97,40 +78,50 @@ def _normalize_sap(value: str) -> str:
         return cleaned.zfill(10)
 
     raise ValueError(
-        f"SAP must be 9 or 10 digits. Got '{value}' ({length} digits)."
+        f"Row {row_number}: SAP must be 9 or 10 digits. "
+        f"Got '{value}' ({length} digits)."
     )
 
 
 def read_excel(file: Any) -> list[Label]:
     """
     Read an Excel file-like object and return label records.
-
-    Args:
-        file: Uploaded Excel file from Streamlit or file-like object.
-
-    Returns:
-        A list of parsed `Label` records.
     """
+
     df = pd.read_excel(file, dtype=str)
+
+    if df.empty:
+        raise ValueError("Excel file contains no rows.")
 
     column_map = _resolve_columns(df.columns.tolist())
 
     labels: list[Label] = []
 
-    for _, row in df.iterrows():
-        supplier = _coerce_to_string(row[column_map["supplier"]]).strip()
-        store = _coerce_to_string(row[column_map["store"]]).strip()
-        po = _coerce_to_string(row[column_map["po"]]).strip()
-        description = _coerce_to_string(row[column_map["description"]]).strip()
-        sap_raw = _coerce_to_string(row[column_map["sap"]]).strip()
-        sap = _normalize_sap(sap_raw)
+    for index, row in df.iterrows():
+        row_number = index + 2  # +2 because Excel rows start at 1 and row 1 is header
+
+        supplier = _coerce_to_string(row[column_map["supplier"]])
+        store = _coerce_to_string(row[column_map["store"]])
+        po = _coerce_to_string(row[column_map["po"]])
+        description = _coerce_to_string(row[column_map["description"]])
+        sap_raw = _coerce_to_string(row[column_map["sap"]])
+
+        print(
+            f"[DEBUG] Row {row_number} -> "
+            f"Supplier='{supplier}', Store='{store}', "
+            f"PO='{po}', SAP='{sap_raw}'"
+        )
+
+        if not supplier:
+            raise ValueError(f"Row {row_number}: Supplier is blank.")
+
+        if not store:
+            raise ValueError(f"Row {row_number}: Store is blank.")
 
         if not po:
-            raise ValueError("PO cannot be empty.")
-        if not sap_raw:
-            raise ValueError("SAP cannot be empty.")
+            raise ValueError(f"Row {row_number}: PO is blank.")
 
-        _validate_barcode_field(po, "PO")
+        sap = _normalize_sap(sap_raw, row_number)
 
         labels.append(
             Label(
@@ -141,8 +132,5 @@ def read_excel(file: Any) -> list[Label]:
                 sap=sap,
             )
         )
-
-    if not labels:
-        raise ValueError("Excel file contains no valid rows.")
 
     return labels
