@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "label-maker"
+version = "0.1.0"
+description = "In-house Streamlit scaffold for EOTF shipping label generation."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "streamlit",
+    "pandas",
+    "openpyxl",
+    "reportlab",
+    "python-docx",
+    "pillow",
+    "pytest",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
