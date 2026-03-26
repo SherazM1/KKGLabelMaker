@@ -6,7 +6,7 @@ from typing import Any
 
 import pandas as pd
 
-from ..models.label import Label
+from app.models.label import Label
 
 
 REQUIRED_COLUMNS = {"Supplier", "Store", "PO", "Description", "SAP"}

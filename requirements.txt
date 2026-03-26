@@ -1,8 +1,7 @@
-streamlit
-pandas
-openpyxl
-reportlab
-python-docx
-pillow
-pytest
+streamlit>=1.32.0
+pandas>=2.0.0
+openpyxl>=3.1.0
+reportlab>=4.0.0
 
+# Install this project as a package
+-e .

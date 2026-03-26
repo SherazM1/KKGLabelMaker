@@ -9,9 +9,9 @@ from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 from reportlab.graphics import renderPDF
 
-from ..models.label import Label
-from ..utils.formatting import drop_leading_zeros, sanitize_text, safe_wrap_text
-from .barcode_service import generate_code128_barcode
+from app.models.label import Label
+from app.services.barcode_service import generate_code128_barcode
+from app.utils.formatting import drop_leading_zeros, sanitize_text, safe_wrap_text
 
 
 PAGE_WIDTH, PAGE_HEIGHT = letter

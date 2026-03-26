@@ -1,23 +1,22 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=65", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "label-maker"
+name = "kkglabelmaker"
 version = "0.1.0"
-description = "In-house Streamlit scaffold for EOTF shipping label generation."
+description = "EOTF Shipping Label Maker"
+authors = [{name="Sheraz"}]
 readme = "README.md"
 requires-python = ">=3.11"
+
 dependencies = [
-    "streamlit",
-    "pandas",
-    "openpyxl",
-    "reportlab",
-    "python-docx",
-    "pillow",
-    "pytest",
+    "streamlit>=1.32.0",
+    "pandas>=2.0.0",
+    "openpyxl>=3.1.0",
+    "reportlab>=4.0.0"
 ]
 
-[tool.pytest.ini_options]
-pythonpath = ["."]
-testpaths = ["tests"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]

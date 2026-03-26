@@ -1,2 +1,1 @@
-"""Application package for the EOTF label maker."""
-
+"""KKG Label Maker application package."""
