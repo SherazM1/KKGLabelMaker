@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import streamlit as st
 
-from services.excel_reader import read_excel
-from services.pdf_generator import generate_label_pdf
+from .services.excel_reader import read_excel
+from .services.pdf_generator import generate_label_pdf
 
 
 def main() -> None:
