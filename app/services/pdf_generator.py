@@ -13,13 +13,49 @@ from app.services.barcode_service import generate_code128_barcode
 from app.utils.formatting import drop_leading_zeros, sanitize_text
 
 
-PAGE_WIDTH = 4.25 * inch
+# ── Page size: half-letter label (4.25" × 6.25") ──────────────────────────────
+PAGE_WIDTH  = 4.25 * inch
 PAGE_HEIGHT = 6.25 * inch
 
-LEFT_MARGIN = 25.2
-FONT_SIZE = 12
-FOOTER_SIZE = 10
-LINE_GAP = 16.1
+# ── Layout constants derived from the model PDF ────────────────────────────────
+LEFT_MARGIN   = 25.2
+FONT_SIZE     = 12
+FOOTER_SIZE   = 10
+LINE_GAP      = 16.1
+
+
+def _draw_wrapped_text(
+    c: canvas.Canvas,
+    text: str,
+    x: float,
+    y: float,
+    max_width: float,
+    line_height: float,
+    max_lines: int = 2,
+) -> float:
+    words = text.split()
+    lines: list[str] = []
+    current = ""
+
+    for word in words:
+        test = f"{current} {word}".strip()
+        if c.stringWidth(test, "Helvetica", FONT_SIZE) <= max_width:
+            current = test
+        else:
+            if current:
+                lines.append(current)
+            current = word
+            if len(lines) >= max_lines:
+                break
+
+    if current and len(lines) < max_lines:
+        lines.append(current)
+
+    for line in lines:
+        c.drawString(x, y, line)
+        y -= line_height
+
+    return y
 
 
 def _draw_label_page(c: canvas.Canvas, label: Label) -> None:
@@ -50,11 +86,11 @@ def _draw_label_page(c: canvas.Canvas, label: Label) -> None:
     y = PAGE_HEIGHT - 133.0 - FONT_SIZE
     c.drawString(LEFT_MARGIN, y, f"PO #: {po_display}")
 
-    # 7️⃣ PO Barcode (24pt height)
+    # 7️⃣ PO Barcode (UPDATED for longer Sony-style look)
     po_barcode = generate_code128_barcode(
         label.po,
-        bar_height=32,
-        bar_width=0.85,
+        bar_height=34,   # increased height
+        bar_width=0.55,  # thinner bars = longer overall width
     )
     barcode_y = PAGE_HEIGHT - 194.9
     renderPDF.draw(po_barcode, c, LEFT_MARGIN, barcode_y)
@@ -64,18 +100,26 @@ def _draw_label_page(c: canvas.Canvas, label: Label) -> None:
     c.drawString(LEFT_MARGIN, y, "Desc:")
 
     y = PAGE_HEIGHT - 213.2 - FONT_SIZE
-    c.drawString(LEFT_MARGIN, y, sanitize_text(label.description))
+    _draw_wrapped_text(
+        c,
+        sanitize_text(label.description),
+        LEFT_MARGIN,
+        y,
+        max_width=230,
+        line_height=LINE_GAP,
+        max_lines=2,
+    )
 
     # 9️⃣ SAP
     sap_display = drop_leading_zeros(label.sap)
     y = PAGE_HEIGHT - 263.8 - FONT_SIZE
     c.drawString(LEFT_MARGIN, y, f"SAP #: {sap_display}")
 
-    # 🔟 SAP Barcode (28pt height)
+    # 🔟 SAP Barcode (UPDATED for longer Sony-style look)
     sap_barcode = generate_code128_barcode(
         label.sap,
-        bar_height=28,
-        bar_width=0.72,
+        bar_height=36,   # slightly taller than PO
+        bar_width=0.55,  # thinner bars for stretched appearance
     )
     barcode_y = PAGE_HEIGHT - 335.9
     renderPDF.draw(sap_barcode, c, LEFT_MARGIN, barcode_y)
