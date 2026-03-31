@@ -15,7 +15,13 @@ from app.utils.formatting import sanitize_text
 
 PAGE_WIDTH = 4 * inch
 PAGE_HEIGHT = 6 * inch
-LEFT_MARGIN = 0.28 * inch
+
+LEFT_MARGIN = 0.20 * inch
+RIGHT_MARGIN = 0.20 * inch
+TOP_MARGIN = 0.20 * inch
+BOTTOM_MARGIN = 0.20 * inch
+PRINT_WIDTH = PAGE_WIDTH - LEFT_MARGIN - RIGHT_MARGIN
+CENTER_X = PAGE_WIDTH / 2
 
 
 def _draw_wrapped(
@@ -24,16 +30,16 @@ def _draw_wrapped(
     x: float,
     y: float,
     max_width: float,
+    *,
     font_name: str = "Helvetica",
     font_size: float = 9,
-    line_height: float = 11,
-    max_lines: int = 3,
+    line_height: float = 10.5,
+    max_lines: int = 2,
 ) -> float:
     clean = sanitize_text(text)
     if not clean:
         return y
 
-    c.setFont(font_name, font_size)
     words = clean.split()
     line = ""
     lines: list[str] = []
@@ -52,6 +58,7 @@ def _draw_wrapped(
     if line and len(lines) < max_lines:
         lines.append(line)
 
+    c.setFont(font_name, font_size)
     for value in lines:
         c.drawString(x, y, value)
         y -= line_height
@@ -59,57 +66,154 @@ def _draw_wrapped(
     return y
 
 
+def _create_fitted_barcode(
+    data: str,
+    *,
+    target_width: float,
+    bar_height: float,
+    max_bar_width: float,
+    min_bar_width: float,
+    step: float = 0.02,
+):
+    bar_width = max_bar_width
+    best = generate_code128_barcode(data, bar_height=bar_height, bar_width=bar_width)
+
+    while bar_width >= min_bar_width:
+        candidate = generate_code128_barcode(
+            data,
+            bar_height=bar_height,
+            bar_width=bar_width,
+        )
+        if candidate.width <= target_width:
+            return candidate
+        best = candidate
+        bar_width -= step
+
+    return best
+
+
 def _draw_label_page(c: canvas.Canvas, label: SamsLabel) -> None:
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(LEFT_MARGIN, PAGE_HEIGHT - 0.45 * inch, "SAM'S WAREHOUSE LABEL")
+    top_y = PAGE_HEIGHT - TOP_MARGIN
+    col_gap = 0.14 * inch
+    col_width = (PRINT_WIDTH - col_gap) / 2
+    left_x = LEFT_MARGIN
+    right_x = LEFT_MARGIN + col_width + col_gap
+    divider_x = LEFT_MARGIN + col_width + (col_gap / 2)
+
+    c.setStrokeColorRGB(0, 0, 0)
+    c.setFillColorRGB(0, 0, 0)
+
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(left_x, top_y - 8, "SHIP FROM")
+    c.drawString(right_x, top_y - 8, "SHIP TO")
+
+    line_y = top_y - 20
+    c.setFont("Helvetica", 9)
+    c.drawString(left_x, line_y, sanitize_text(label.shipper_name))
+    c.drawString(right_x, line_y, sanitize_text(label.ship_to_name))
+
+    line_y -= 11
+    left_end_y = _draw_wrapped(
+        c,
+        label.shipper_address,
+        left_x,
+        line_y,
+        col_width,
+        font_name="Helvetica",
+        font_size=9,
+        line_height=10.5,
+        max_lines=2,
+    )
+    right_end_y = _draw_wrapped(
+        c,
+        label.ship_to_address,
+        right_x,
+        line_y,
+        col_width,
+        font_name="Helvetica",
+        font_size=9,
+        line_height=10.5,
+        max_lines=2,
+    )
 
     c.setFont("Helvetica", 9)
-    y = PAGE_HEIGHT - 0.75 * inch
-    c.drawString(LEFT_MARGIN, y, f"FROM: {sanitize_text(label.shipper_name)}")
-    y -= 11
-    y = _draw_wrapped(c, label.shipper_address, LEFT_MARGIN + 34, y, PAGE_WIDTH - 0.7 * inch)
-    c.drawString(LEFT_MARGIN, y, f"{sanitize_text(label.shipper_city)}, {sanitize_text(label.shipper_state)} {label.shipper_zip}")
+    c.drawString(
+        left_x,
+        left_end_y,
+        f"{sanitize_text(label.shipper_city)}, {sanitize_text(label.shipper_state)} {label.shipper_zip}",
+    )
+    c.drawString(
+        right_x,
+        right_end_y,
+        f"{sanitize_text(label.ship_to_city)}, {sanitize_text(label.ship_to_state)} {label.ship_to_zip}",
+    )
 
-    y -= 18
-    c.drawString(LEFT_MARGIN, y, f"TO: {sanitize_text(label.ship_to_name)}")
-    y -= 11
-    y = _draw_wrapped(c, label.ship_to_address, LEFT_MARGIN + 18, y, PAGE_WIDTH - 0.7 * inch)
-    c.drawString(LEFT_MARGIN, y, f"{sanitize_text(label.ship_to_city)}, {sanitize_text(label.ship_to_state)} {label.ship_to_zip}")
+    top_block_bottom_y = min(left_end_y, right_end_y) - 7
+    c.setLineWidth(0.9)
+    c.line(divider_x, top_y - 12, divider_x, top_block_bottom_y + 4)
+    c.line(LEFT_MARGIN, top_block_bottom_y, PAGE_WIDTH - RIGHT_MARGIN, top_block_bottom_y)
 
     postal_barcode_value = "420" + label.ship_to_zip.replace("-", "")
-    postal_barcode = generate_code128_barcode(
+    postal_barcode = _create_fitted_barcode(
         postal_barcode_value,
-        bar_height=42,
-        bar_width=0.95,
+        target_width=PRINT_WIDTH * 0.88,
+        bar_height=0.58 * inch,
+        max_bar_width=1.35,
+        min_bar_width=0.80,
     )
+    postal_x = (PAGE_WIDTH - postal_barcode.width) / 2
+    postal_bottom = top_block_bottom_y - 0.76 * inch
+    renderPDF.draw(postal_barcode, c, postal_x, postal_bottom)
 
-    postal_y = PAGE_HEIGHT - 3.15 * inch
-    renderPDF.draw(postal_barcode, c, LEFT_MARGIN, postal_y)
-    c.setFont("Helvetica", 10)
-    c.drawString(LEFT_MARGIN, postal_y - 12, f"(420){label.ship_to_zip}")
+    postal_text = f"(420){label.ship_to_zip}"
+    c.setFont("Helvetica", 8.5)
+    postal_text_width = c.stringWidth(postal_text, "Helvetica", 8.5)
+    c.drawString((PAGE_WIDTH - postal_text_width) / 2, postal_bottom - 11, postal_text)
 
+    middle_divider_y = postal_bottom - 18
+    c.setLineWidth(0.85)
+    c.line(LEFT_MARGIN, middle_divider_y, PAGE_WIDTH - RIGHT_MARGIN, middle_divider_y)
+
+    middle_y = middle_divider_y - 12
+    left_cluster = (
+        f"DC# {sanitize_text(label.whse)}    "
+        f"TYPE {sanitize_text(label.type_code)}    "
+        f"DEPT {sanitize_text(label.dept)}"
+    )
+    order_value = f"ORDER# {sanitize_text(label.po_number)}"
+    c.setFont("Helvetica-Bold", 9.5)
+    c.drawString(LEFT_MARGIN, middle_y, left_cluster)
+    c.drawRightString(PAGE_WIDTH - RIGHT_MARGIN, middle_y, order_value)
+
+    middle_y -= 14
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(LEFT_MARGIN, middle_y, f"WMIT: {sanitize_text(label.item_number)}")
+
+    middle_y -= 12
     c.setFont("Helvetica", 9)
-    meta_y = postal_y - 30
-    c.drawString(LEFT_MARGIN, meta_y, f"PO #: {label.po_number}")
-    c.drawString(PAGE_WIDTH / 2, meta_y, f"QTY: {label.quantity}")
-    meta_y -= 11
-    c.drawString(LEFT_MARGIN, meta_y, f"WHSE: {label.whse}")
-    c.drawString(PAGE_WIDTH / 2, meta_y, f"TYPE: {label.type_code}")
-    meta_y -= 11
-    c.drawString(LEFT_MARGIN, meta_y, f"DEPT: {label.dept}")
-    c.drawString(PAGE_WIDTH / 2, meta_y, f"ITEM #: {label.item_number}")
-    meta_y -= 11
-    _draw_wrapped(c, f"DESC: {label.description}", LEFT_MARGIN, meta_y, PAGE_WIDTH - 0.55 * inch, max_lines=2)
-
-    bottom_barcode = generate_code128_barcode(
-        label.upc,
-        bar_height=52,
-        bar_width=1.0,
+    desc = f"DESC: {sanitize_text(label.description)}"
+    c.drawString(LEFT_MARGIN, middle_y, desc)
+    c.setFont("Helvetica-Bold", 10)
+    c.drawRightString(
+        PAGE_WIDTH - RIGHT_MARGIN,
+        middle_y,
+        f"QTY {sanitize_text(label.quantity)}",
     )
-    bottom_y = 0.82 * inch
-    renderPDF.draw(bottom_barcode, c, LEFT_MARGIN, bottom_y)
-    c.setFont("Helvetica", 10)
-    c.drawString(LEFT_MARGIN, bottom_y - 12, label.upc)
+
+    upc_barcode = _create_fitted_barcode(
+        label.upc,
+        target_width=PRINT_WIDTH * 0.94,
+        bar_height=0.96 * inch,
+        max_bar_width=1.45,
+        min_bar_width=0.90,
+    )
+    upc_x = (PAGE_WIDTH - upc_barcode.width) / 2
+    upc_bottom = BOTTOM_MARGIN + 0.34 * inch
+    renderPDF.draw(upc_barcode, c, upc_x, upc_bottom)
+
+    c.setFont("Helvetica", 8.5)
+    upc_text_width = c.stringWidth(label.upc, "Helvetica", 8.5)
+    c.drawString((PAGE_WIDTH - upc_text_width) / 2, upc_bottom - 11, label.upc)
 
 
 def generate_sams_pdf(labels: list[SamsLabel]) -> bytes:
