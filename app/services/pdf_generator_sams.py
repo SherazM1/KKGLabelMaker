@@ -93,7 +93,11 @@ def _create_fitted_barcode(
 
 
 def _draw_label_page(c: canvas.Canvas, label: SamsLabel) -> None:
-    top_y = PAGE_HEIGHT - TOP_MARGIN
+    top_y = PAGE_HEIGHT - 30
+    postal_barcode_y = PAGE_HEIGHT - 140
+    middle_section_y = PAGE_HEIGHT - 220
+    bottom_barcode_y = 40
+
     col_gap = 0.14 * inch
     col_width = (PRINT_WIDTH - col_gap) / 2
     left_x = LEFT_MARGIN
@@ -148,7 +152,7 @@ def _draw_label_page(c: canvas.Canvas, label: SamsLabel) -> None:
         f"{sanitize_text(label.ship_to_city)}, {sanitize_text(label.ship_to_state)} {label.ship_to_zip}",
     )
 
-    top_block_bottom_y = min(left_end_y, right_end_y) - 7
+    top_block_bottom_y = top_y - 66
     c.setLineWidth(1.0)
     c.line(divider_x, top_y - 12, divider_x, top_block_bottom_y + 4)
     c.line(LEFT_MARGIN, top_block_bottom_y, PAGE_WIDTH - RIGHT_MARGIN, top_block_bottom_y)
@@ -162,7 +166,7 @@ def _draw_label_page(c: canvas.Canvas, label: SamsLabel) -> None:
         min_bar_width=0.90,
     )
     postal_x = (PAGE_WIDTH - postal_barcode.width) / 2
-    postal_bottom = top_block_bottom_y - 0.71 * inch
+    postal_bottom = postal_barcode_y
     renderPDF.draw(postal_barcode, c, postal_x, postal_bottom)
 
     postal_text = f"(420){label.ship_to_zip}"
@@ -177,11 +181,11 @@ def _draw_label_page(c: canvas.Canvas, label: SamsLabel) -> None:
     c.drawString(static_x, static_y - 11, "PRO")
     c.drawString(static_x, static_y - 22, "B/L")
 
-    middle_divider_y = postal_bottom - 14
+    middle_divider_y = middle_section_y + 16
     c.setLineWidth(0.95)
     c.line(LEFT_MARGIN, middle_divider_y, PAGE_WIDTH - RIGHT_MARGIN, middle_divider_y)
 
-    middle_y = middle_divider_y - 10
+    middle_y = middle_section_y
     c.setFont("Helvetica-Bold", 9.5)
     c.drawString(LEFT_MARGIN, middle_y, "DC#")
     c.drawString(LEFT_MARGIN + 20, middle_y, sanitize_text(label.whse))
@@ -216,7 +220,7 @@ def _draw_label_page(c: canvas.Canvas, label: SamsLabel) -> None:
         min_bar_width=0.90,
     )
     upc_x = (PAGE_WIDTH - upc_barcode.width) / 2
-    upc_bottom = BOTTOM_MARGIN + 0.34 * inch
+    upc_bottom = bottom_barcode_y
     renderPDF.draw(upc_barcode, c, upc_x, upc_bottom)
 
     c.setFont("Helvetica", 8.5)
