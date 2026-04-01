@@ -95,8 +95,8 @@ def _create_fitted_barcode(
 def _draw_label_page(c: canvas.Canvas, label: SamsLabel) -> None:
     top_y = PAGE_HEIGHT - 30
     postal_barcode_y = PAGE_HEIGHT - 140
-    middle_section_y = PAGE_HEIGHT - 220
-    bottom_barcode_y = 40
+    middle_section_y = PAGE_HEIGHT - 245
+    bottom_barcode_y = 34
 
     col_gap = 0.14 * inch
     col_width = (PRINT_WIDTH - col_gap) / 2
@@ -161,8 +161,8 @@ def _draw_label_page(c: canvas.Canvas, label: SamsLabel) -> None:
     postal_barcode = _create_fitted_barcode(
         postal_barcode_value,
         target_width=PRINT_WIDTH * 0.90,
-        bar_height=0.66 * inch,
-        max_bar_width=1.55,
+        bar_height=0.74 * inch,
+        max_bar_width=1.62,
         min_bar_width=0.90,
     )
     postal_x = (PAGE_WIDTH - postal_barcode.width) / 2
@@ -181,7 +181,7 @@ def _draw_label_page(c: canvas.Canvas, label: SamsLabel) -> None:
     c.drawString(static_x, static_y - 11, "PRO")
     c.drawString(static_x, static_y - 22, "B/L")
 
-    middle_divider_y = middle_section_y + 16
+    middle_divider_y = middle_section_y + 18
     c.setLineWidth(0.95)
     c.line(LEFT_MARGIN, middle_divider_y, PAGE_WIDTH - RIGHT_MARGIN, middle_divider_y)
 
@@ -215,8 +215,8 @@ def _draw_label_page(c: canvas.Canvas, label: SamsLabel) -> None:
     upc_barcode = _create_fitted_barcode(
         label.upc,
         target_width=PRINT_WIDTH * 0.94,
-        bar_height=1.02 * inch,
-        max_bar_width=1.50,
+        bar_height=1.14 * inch,
+        max_bar_width=1.58,
         min_bar_width=0.90,
     )
     upc_x = (PAGE_WIDTH - upc_barcode.width) / 2
