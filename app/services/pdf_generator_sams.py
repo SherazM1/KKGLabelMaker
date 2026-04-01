@@ -174,13 +174,6 @@ def _draw_label_page(c: canvas.Canvas, label: SamsLabel) -> None:
     postal_text_width = c.stringWidth(postal_text, "Helvetica", 11)
     c.drawString((PAGE_WIDTH - postal_text_width) / 2, postal_bottom - 14, postal_text)
 
-    static_x = PAGE_WIDTH - RIGHT_MARGIN - 0.64 * inch
-    static_y = postal_bottom + (postal_barcode.height / 2) + 11
-    c.setFont("Helvetica-Bold", 9)
-    c.drawString(static_x, static_y, "CLUB")
-    c.drawString(static_x, static_y - 11, "PRO")
-    c.drawString(static_x, static_y - 22, "B/L")
-
     middle_divider_y = middle_section_y + 18
     c.setLineWidth(0.95)
     c.line(LEFT_MARGIN, middle_divider_y, PAGE_WIDTH - RIGHT_MARGIN, middle_divider_y)
@@ -211,6 +204,12 @@ def _draw_label_page(c: canvas.Canvas, label: SamsLabel) -> None:
         middle_y,
         f"Qty {sanitize_text(label.quantity)}",
     )
+
+    club_y = middle_y - 13
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(LEFT_MARGIN, club_y, "CLUB")
+    c.drawString(LEFT_MARGIN, club_y - 11, "PRO")
+    c.drawString(LEFT_MARGIN, club_y - 22, "B/L")
 
     upc_barcode = _create_fitted_barcode(
         label.upc,
