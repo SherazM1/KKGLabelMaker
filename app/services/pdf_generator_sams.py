@@ -166,16 +166,16 @@ def _draw_label_page(c: canvas.Canvas, label: SamsLabel) -> None:
         min_bar_width=0.90,
     )
     postal_x = (PAGE_WIDTH - postal_barcode.width) / 2
-    postal_bottom = postal_barcode_y
+    postal_bottom = postal_barcode_y - 18
     renderPDF.draw(postal_barcode, c, postal_x, postal_bottom)
 
     postal_text = f"(420){label.ship_to_zip}"
-    c.setFont("Helvetica", 8.5)
-    postal_text_width = c.stringWidth(postal_text, "Helvetica", 8.5)
-    c.drawString((PAGE_WIDTH - postal_text_width) / 2, postal_bottom - 8, postal_text)
+    c.setFont("Helvetica", 11)
+    postal_text_width = c.stringWidth(postal_text, "Helvetica", 11)
+    c.drawString((PAGE_WIDTH - postal_text_width) / 2, postal_bottom - 14, postal_text)
 
-    static_x = PAGE_WIDTH - RIGHT_MARGIN - 0.62 * inch
-    static_y = postal_bottom + 0.58 * inch
+    static_x = PAGE_WIDTH - RIGHT_MARGIN - 0.64 * inch
+    static_y = postal_bottom + (postal_barcode.height / 2) + 11
     c.setFont("Helvetica-Bold", 9)
     c.drawString(static_x, static_y, "CLUB")
     c.drawString(static_x, static_y - 11, "PRO")
@@ -223,9 +223,9 @@ def _draw_label_page(c: canvas.Canvas, label: SamsLabel) -> None:
     upc_bottom = bottom_barcode_y
     renderPDF.draw(upc_barcode, c, upc_x, upc_bottom)
 
-    c.setFont("Helvetica", 8.5)
-    upc_text_width = c.stringWidth(label.upc, "Helvetica", 8.5)
-    c.drawString((PAGE_WIDTH - upc_text_width) / 2, upc_bottom - 11, label.upc)
+    c.setFont("Helvetica", 11)
+    upc_text_width = c.stringWidth(label.upc, "Helvetica", 11)
+    c.drawString((PAGE_WIDTH - upc_text_width) / 2, upc_bottom - 18, label.upc)
 
 
 def generate_sams_pdf(labels: list[SamsLabel]) -> bytes:
