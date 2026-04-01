@@ -15,6 +15,11 @@ from app.utils.formatting import sanitize_text
 PAGE_WIDTH, PAGE_HEIGHT = letter
 LEFT_MARGIN = 48
 RIGHT_MARGIN = 48
+ORDER_LABEL_FONT_SIZE = 15
+ORDER_VALUE_FONT_SIZE = 13
+ORDER_DESC_VALUE_FONT_SIZE = 12
+ORDER_LABEL_X = LEFT_MARGIN
+ORDER_VALUE_X = LEFT_MARGIN + 138
 
 
 def _draw_divider(c: canvas.Canvas, y: float) -> None:
@@ -70,21 +75,21 @@ def _draw_label_page(c: canvas.Canvas, label: AlbertsonsLabel) -> None:
     _draw_divider(c, divider_one_y)
 
     order_top_y = divider_one_y - 28
-    c.setFont("Helvetica-Bold", 13)
-    c.drawString(left_x, order_top_y, "PURCHASE ORDER#")
-    c.setFont("Helvetica", 13)
-    c.drawString(left_x + 170, order_top_y, sanitize_text(label.po_number))
+    c.setFont("Helvetica-Bold", ORDER_LABEL_FONT_SIZE)
+    c.drawString(ORDER_LABEL_X, order_top_y, "PURCHASE ORDER#")
+    c.setFont("Helvetica", ORDER_VALUE_FONT_SIZE)
+    c.drawString(ORDER_VALUE_X, order_top_y, sanitize_text(label.po_number))
 
-    c.setFont("Helvetica-Bold", 13)
-    c.drawString(left_x, order_top_y - 22, "ITEM#")
-    c.setFont("Helvetica", 13)
-    c.drawString(left_x + 170, order_top_y - 22, sanitize_text(label.item_number))
+    c.setFont("Helvetica-Bold", ORDER_LABEL_FONT_SIZE)
+    c.drawString(ORDER_LABEL_X, order_top_y - 22, "ITEM#")
+    c.setFont("Helvetica", ORDER_VALUE_FONT_SIZE)
+    c.drawString(ORDER_VALUE_X, order_top_y - 22, sanitize_text(label.item_number))
 
-    c.setFont("Helvetica-Bold", 13)
-    c.drawString(left_x, order_top_y - 44, "DESC")
+    c.setFont("Helvetica-Bold", ORDER_LABEL_FONT_SIZE)
+    c.drawString(ORDER_LABEL_X, order_top_y - 44, "DESC")
     desc_text, pack_info = _split_description_and_pack(label.description)
-    c.setFont("Helvetica", 12)
-    c.drawString(left_x + 170, order_top_y - 44, desc_text)
+    c.setFont("Helvetica", ORDER_DESC_VALUE_FONT_SIZE)
+    c.drawString(ORDER_VALUE_X, order_top_y - 44, desc_text)
 
     c.setFont("Helvetica-Bold", 15)
     c.drawRightString(PAGE_WIDTH - RIGHT_MARGIN, order_top_y - 22, f"Qty {sanitize_text(label.quantity)}")
