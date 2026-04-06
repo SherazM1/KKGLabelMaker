@@ -188,7 +188,11 @@ def render_albertsons_mode() -> None:
 
 
 def render_home() -> None:
-    logo_path = Path.cwd() / "assets" / "KKG-Logo-02.png"
+    logo_candidates = (
+        Path.cwd() / "assets" / "KKG-Logo-02.png",
+        Path.cwd() / "label-maker" / "assets" / "KKG-Logo-02.png",
+    )
+    logo_path = next((p for p in logo_candidates if p.exists()), logo_candidates[0])
 
     col1, col2 = st.columns([1, 5])
 
