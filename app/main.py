@@ -192,9 +192,39 @@ def render_albertsons_mode() -> None:
         st.error(f"Unexpected error: {exc}")
 
 
-def main() -> None:
-    """Run the Streamlit user interface."""
-    st.set_page_config(page_title="Kendal King Operations Hub", layout="centered")
+def render_home() -> None:
+    logo_path = Path(__file__).resolve().parents[2] / "assets" / "KKG-Logo-02.png"
+
+    col1, col2 = st.columns([1, 5])
+
+    with col1:
+        if logo_path.exists():
+            st.image(str(logo_path), width=80)
+
+    with col2:
+        st.title("Kendal King Operations Hub")
+        st.caption("Internal tools for shipping, labels, and operations workflows.")
+
+    st.markdown("---")
+
+    st.subheader("Tools")
+
+    if st.button("Label Maker", use_container_width=True):
+        st.session_state["page"] = "label_maker"
+
+    st.markdown("---")
+
+    st.subheader("Coming Soon")
+
+    st.button("Shipping Tools (Coming Soon)", disabled=True, use_container_width=True)
+    st.button("Inventory (Coming Soon)", disabled=True, use_container_width=True)
+
+
+def render_label_maker() -> None:
+    if st.button("← Back to Home"):
+        st.session_state["page"] = "home"
+        st.stop()
+
     _apply_theme_styles()
     render_hub_header()
     st.markdown('<div class="kkg-module-card">', unsafe_allow_html=True)
@@ -211,6 +241,19 @@ def main() -> None:
         render_albertsons_mode()
     else:
         st.info("Select a label mode to begin.")
+
+
+def main() -> None:
+    """Run the Streamlit user interface."""
+    st.set_page_config(page_title="Kendal King Operations Hub", layout="centered")
+
+    if "page" not in st.session_state:
+        st.session_state["page"] = "home"
+
+    if st.session_state["page"] == "home":
+        render_home()
+    elif st.session_state["page"] == "label_maker":
+        render_label_maker()
 
 
 if __name__ == "__main__":
