@@ -12,6 +12,7 @@ from app.services.excel_reader_sams import read_excel_sams
 from app.services.pdf_generator_albertsons import generate_albertsons_pdf
 from app.services.pdf_generator import generate_label_pdf
 from app.services.pdf_generator_sams import generate_sams_pdf
+from app.ui.bol_generator import render_bol_generator_view
 
 
 def _apply_theme_styles() -> None:
@@ -219,11 +220,13 @@ def render_home() -> None:
     if st.button("Label Maker", use_container_width=True):
         st.session_state["page"] = "label_maker"
 
+    if st.button("BOL Generator", use_container_width=True):
+        st.session_state["page"] = "bol_generator"
+
     st.markdown("---")
 
     st.subheader("Coming Soon")
 
-    st.button("Shipping Tools (Coming Soon)", disabled=True, use_container_width=True)
     st.button("Inventory (Coming Soon)", disabled=True, use_container_width=True)
 
 
@@ -250,6 +253,12 @@ def render_label_maker() -> None:
         st.info("Select a label mode to begin.")
 
 
+def render_bol_generator() -> None:
+    _apply_theme_styles()
+    render_hub_header()
+    render_bol_generator_view()
+
+
 def main() -> None:
     """Run the Streamlit user interface."""
     st.set_page_config(page_title="Kendal King Operations Hub", layout="centered")
@@ -261,6 +270,8 @@ def main() -> None:
         render_home()
     elif st.session_state["page"] == "label_maker":
         render_label_maker()
+    elif st.session_state["page"] == "bol_generator":
+        render_bol_generator()
 
 
 if __name__ == "__main__":
