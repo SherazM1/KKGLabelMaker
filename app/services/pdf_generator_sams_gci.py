@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from io import BytesIO
+from typing import Any
 
 from reportlab.graphics import renderPDF
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 
-from app.models.sams_gci_label import SamsGciPayload, SamsGciTopLabelRow
+from app.models.sams_gci_label import SamsGciBottomRow, SamsGciPayload, SamsGciTopLabelRow
 from app.services.barcode_service import generate_code128_barcode
 from app.utils.formatting import sanitize_text
 
@@ -23,21 +24,43 @@ BOTTOM_MARGIN = 0.15 * inch
 PRINT_WIDTH = PAGE_WIDTH - LEFT_MARGIN - RIGHT_MARGIN
 
 
-def _draw_wrapped(
+def _round_key(value: float) -> float:
+    return round(value, 3)
+
+
+def _normalize_bottom_rows(bottom_rows: list[SamsGciBottomRow]) -> list[dict[str, str]]:
+    normalized_rows: list[dict[str, str]] = []
+    for row in bottom_rows:
+        normalized_rows.append(
+            {
+                "program_name": sanitize_text(row.program_name),
+                "item_number": sanitize_text(row.item_number),
+                "quantity": sanitize_text(row.quantity),
+                "barcode_value": sanitize_text(row.barcode_value),
+                "description": sanitize_text(row.description),
+            }
+        )
+    return normalized_rows
+
+
+def _get_wrapped_lines(
     c: canvas.Canvas,
     text: str,
-    x: float,
-    y: float,
     max_width: float,
     *,
     font_name: str = "Helvetica",
     font_size: float = 8.0,
-    line_height: float = 9.0,
     max_lines: int = 2,
-) -> float:
+    wrap_cache: dict[tuple[Any, ...], list[str]],
+) -> list[str]:
     clean = sanitize_text(text)
     if not clean:
-        return y
+        return []
+
+    cache_key = (clean, _round_key(max_width), font_name, _round_key(font_size), max_lines)
+    cached = wrap_cache.get(cache_key)
+    if cached is not None:
+        return cached
 
     words = clean.split()
     lines: list[str] = []
@@ -57,9 +80,38 @@ def _draw_wrapped(
     if line and len(lines) < max_lines:
         lines.append(line)
 
+    wrap_cache[cache_key] = lines
+    return lines
+
+
+def _draw_wrapped(
+    c: canvas.Canvas,
+    text: str,
+    x: float,
+    y: float,
+    max_width: float,
+    *,
+    font_name: str = "Helvetica",
+    font_size: float = 8.0,
+    line_height: float = 9.0,
+    max_lines: int = 2,
+    wrap_cache: dict[tuple[Any, ...], list[str]],
+) -> float:
+    lines = _get_wrapped_lines(
+        c,
+        text,
+        max_width,
+        font_name=font_name,
+        font_size=font_size,
+        max_lines=max_lines,
+        wrap_cache=wrap_cache,
+    )
+    if not lines:
+        return y
+
     c.setFont(font_name, font_size)
-    for value in lines:
-        c.drawString(x, y, value)
+    for line in lines:
+        c.drawString(x, y, line)
         y -= line_height
 
     return y
@@ -73,25 +125,51 @@ def _create_fitted_barcode(
     max_bar_width: float,
     min_bar_width: float,
     step: float = 0.02,
+    barcode_cache: dict[tuple[Any, ...], Any],
 ):
-    bar_width = max_bar_width
-    best = generate_code128_barcode(data, bar_height=bar_height, bar_width=bar_width)
+    cache_key = (
+        data,
+        _round_key(target_width),
+        _round_key(bar_height),
+        _round_key(max_bar_width),
+        _round_key(min_bar_width),
+        _round_key(step),
+    )
+    cached = barcode_cache.get(cache_key)
+    if cached is not None:
+        return cached
 
-    while bar_width >= min_bar_width:
+    bar_width = max_bar_width
+    best = None
+    while bar_width >= min_bar_width - 1e-9:
         candidate = generate_code128_barcode(
             data,
             bar_height=bar_height,
             bar_width=bar_width,
         )
         if candidate.width <= target_width:
+            barcode_cache[cache_key] = candidate
             return candidate
         best = candidate
         bar_width -= step
 
+    if best is None:
+        best = generate_code128_barcode(
+            data,
+            bar_height=bar_height,
+            bar_width=min_bar_width,
+        )
+    barcode_cache[cache_key] = best
     return best
 
 
-def _draw_top_section(c: canvas.Canvas, top_label: SamsGciTopLabelRow) -> float:
+def _draw_top_section(
+    c: canvas.Canvas,
+    top_label: SamsGciTopLabelRow,
+    *,
+    barcode_cache: dict[tuple[Any, ...], Any],
+    wrap_cache: dict[tuple[Any, ...], list[str]],
+) -> float:
     top_y = PAGE_HEIGHT - TOP_MARGIN - 6
 
     col_gap = 0.12 * inch
@@ -123,6 +201,7 @@ def _draw_top_section(c: canvas.Canvas, top_label: SamsGciTopLabelRow) -> float:
         font_size=8.0,
         line_height=8.8,
         max_lines=2,
+        wrap_cache=wrap_cache,
     )
     right_end_y = _draw_wrapped(
         c,
@@ -134,6 +213,7 @@ def _draw_top_section(c: canvas.Canvas, top_label: SamsGciTopLabelRow) -> float:
         font_size=8.0,
         line_height=8.8,
         max_lines=2,
+        wrap_cache=wrap_cache,
     )
 
     c.setFont("Helvetica", 8.2)
@@ -193,6 +273,7 @@ def _draw_top_section(c: canvas.Canvas, top_label: SamsGciTopLabelRow) -> float:
         font_size=7.8,
         line_height=8.6,
         max_lines=2,
+        wrap_cache=wrap_cache,
     )
 
     barcode_value = sanitize_text(top_label.top_barcode_value)
@@ -203,6 +284,7 @@ def _draw_top_section(c: canvas.Canvas, top_label: SamsGciTopLabelRow) -> float:
             bar_height=0.46 * inch,
             max_bar_width=1.24,
             min_bar_width=0.64,
+            barcode_cache=barcode_cache,
         )
         top_barcode_x = (PAGE_WIDTH - top_barcode.width) / 2
         top_barcode_bottom = info_y - 47
@@ -214,11 +296,18 @@ def _draw_top_section(c: canvas.Canvas, top_label: SamsGciTopLabelRow) -> float:
     return info_y - 8
 
 
-def _draw_bottom_rows(c: canvas.Canvas, payload: SamsGciPayload, start_y: float) -> None:
+def _draw_bottom_rows(
+    c: canvas.Canvas,
+    bottom_rows: list[dict[str, str]],
+    start_y: float,
+    *,
+    barcode_cache: dict[tuple[Any, ...], Any],
+    wrap_cache: dict[tuple[Any, ...], list[str]],
+) -> None:
     c.setLineWidth(0.8)
     c.line(LEFT_MARGIN, start_y, PAGE_WIDTH - RIGHT_MARGIN, start_y)
 
-    row_count = len(payload.bottom_rows)
+    row_count = len(bottom_rows)
     if row_count <= 0:
         return
 
@@ -232,12 +321,12 @@ def _draw_bottom_rows(c: canvas.Canvas, payload: SamsGciPayload, start_y: float)
     text_width = PAGE_WIDTH - RIGHT_MARGIN - text_x
 
     y = start_y - 5
-    for row in payload.bottom_rows:
-        barcode_value = sanitize_text(row.barcode_value)
-        quantity_value = sanitize_text(row.quantity)
-        item_value = sanitize_text(row.item_number)
-        desc_value = sanitize_text(row.description)
-        program_value = sanitize_text(row.program_name)
+    for row in bottom_rows:
+        barcode_value = row["barcode_value"]
+        quantity_value = row["quantity"]
+        item_value = row["item_number"]
+        desc_value = row["description"]
+        program_value = row["program_name"]
 
         barcode_height = max(0.15 * inch, min(0.26 * inch, row_block_height * 0.42))
         barcode_target_width = barcode_region_width - 4
@@ -249,6 +338,7 @@ def _draw_bottom_rows(c: canvas.Canvas, payload: SamsGciPayload, start_y: float)
                 bar_height=barcode_height,
                 max_bar_width=1.00,
                 min_bar_width=0.36,
+                barcode_cache=barcode_cache,
             )
             row_barcode_x = LEFT_MARGIN + 1
             row_barcode_bottom = y - barcode_height + 1
@@ -277,6 +367,7 @@ def _draw_bottom_rows(c: canvas.Canvas, payload: SamsGciPayload, start_y: float)
             font_size=6.9,
             line_height=7.4,
             max_lines=2,
+            wrap_cache=wrap_cache,
         )
 
         if program_value:
@@ -289,9 +380,48 @@ def _draw_bottom_rows(c: canvas.Canvas, payload: SamsGciPayload, start_y: float)
         y = row_bottom
 
 
-def _draw_gci_label_page(c: canvas.Canvas, payload: SamsGciPayload, top_label: SamsGciTopLabelRow) -> None:
-    bottom_start_y = _draw_top_section(c, top_label)
-    _draw_bottom_rows(c, payload, bottom_start_y)
+def _draw_gci_label_page(
+    c: canvas.Canvas,
+    top_label: SamsGciTopLabelRow,
+    bottom_rows: list[dict[str, str]],
+    *,
+    barcode_cache: dict[tuple[Any, ...], Any],
+    wrap_cache: dict[tuple[Any, ...], list[str]],
+) -> None:
+    bottom_start_y = _draw_top_section(
+        c,
+        top_label,
+        barcode_cache=barcode_cache,
+        wrap_cache=wrap_cache,
+    )
+    _draw_bottom_rows(
+        c,
+        bottom_rows,
+        bottom_start_y,
+        barcode_cache=barcode_cache,
+        wrap_cache=wrap_cache,
+    )
+
+
+def _top_label_form_key(top_label: SamsGciTopLabelRow) -> tuple[str, ...]:
+    return (
+        top_label.shipper_name,
+        top_label.shipper_address,
+        top_label.shipper_city,
+        top_label.shipper_state,
+        top_label.shipper_zip,
+        top_label.ship_to_name,
+        top_label.ship_to_address,
+        top_label.ship_to_city,
+        top_label.ship_to_state,
+        top_label.ship_to_zip,
+        top_label.po_number,
+        top_label.club_number,
+        top_label.whse,
+        top_label.item_number,
+        top_label.description,
+        top_label.quantity,
+    )
 
 
 def generate_sams_gci_pdf(payload: SamsGciPayload) -> bytes:
@@ -303,10 +433,29 @@ def generate_sams_gci_pdf(payload: SamsGciPayload) -> bytes:
 
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=(PAGE_WIDTH, PAGE_HEIGHT))
+    barcode_cache: dict[tuple[Any, ...], Any] = {}
+    wrap_cache: dict[tuple[Any, ...], list[str]] = {}
+    bottom_rows = _normalize_bottom_rows(payload.bottom_rows)
+    form_name_by_label: dict[tuple[str, ...], str] = {}
 
     for top_label in payload.mdg_labels:
+        form_key = _top_label_form_key(top_label)
+        form_name = form_name_by_label.get(form_key)
+        if form_name is None:
+            form_name = f"gci_label_form_{len(form_name_by_label) + 1}"
+            c.beginForm(form_name, 0, 0, PAGE_WIDTH, PAGE_HEIGHT)
+            _draw_gci_label_page(
+                c,
+                top_label,
+                bottom_rows,
+                barcode_cache=barcode_cache,
+                wrap_cache=wrap_cache,
+            )
+            c.endForm()
+            form_name_by_label[form_key] = form_name
+
         for _ in range(2):
-            _draw_gci_label_page(c, payload, top_label)
+            c.doForm(form_name)
             c.showPage()
 
     c.save()
