@@ -9,9 +9,11 @@ import streamlit as st
 from app.services.excel_reader import read_excel
 from app.services.excel_reader_albertsons import read_excel_albertsons
 from app.services.excel_reader_sams import read_excel_sams
+from app.services.excel_reader_sams_gci import read_excel_sams_gci
 from app.services.pdf_generator_albertsons import generate_albertsons_pdf
 from app.services.pdf_generator import generate_label_pdf
 from app.services.pdf_generator_sams import generate_sams_pdf
+from app.services.pdf_generator_sams_gci import generate_sams_gci_pdf
 from app.ui.bol_generator import render_bol_generator_view
 
 
@@ -127,31 +129,85 @@ def render_eotf_mode() -> None:
 
 def render_sams_mode() -> None:
     try:
-        st.write("Upload Excel workbook to generate Sam's warehouse labels.")
+        st.write("Sam's Warehouse Labels")
 
-        uploaded_file = st.file_uploader(
-            "Upload Excel input",
-            type=["xlsx", "xlsm", "xls"],
-            key="sams_file_uploader",
+        sams_subflow = st.radio(
+            "Select Sam's workflow",
+            options=["Non-GCI", "GCI"],
+            horizontal=True,
+            key="sams_subflow_selector",
         )
 
-        if uploaded_file is None:
-            st.info("Upload an Excel file to begin.")
-            return
+        if sams_subflow == "Non-GCI":
+            st.write("Upload Excel workbook to generate Sam's warehouse labels.")
 
-        labels = read_excel_sams(uploaded_file)
-        page_count = len(labels) * 2
-        st.success(f"Parsed {len(labels)} rows. This will generate {page_count} pages.")
-
-        if st.button("Generate Sam's PDF", type="primary", key="generate_sams_pdf"):
-            pdf_bytes = generate_sams_pdf(labels)
-            st.download_button(
-                label="Download Sam's Labels PDF",
-                data=pdf_bytes,
-                file_name="sams_labels.pdf",
-                mime="application/pdf",
-                key="download_sams_pdf",
+            uploaded_file = st.file_uploader(
+                "Upload Excel input",
+                type=["xlsx", "xlsm", "xls"],
+                key="sams_file_uploader",
             )
+
+            if uploaded_file is None:
+                st.info("Upload an Excel file to begin.")
+                return
+
+            labels = read_excel_sams(uploaded_file)
+            page_count = len(labels) * 2
+            st.success(f"Parsed {len(labels)} rows. This will generate {page_count} pages.")
+
+            if st.button("Generate Sam's PDF", type="primary", key="generate_sams_pdf"):
+                pdf_bytes = generate_sams_pdf(labels)
+                st.download_button(
+                    label="Download Sam's Labels PDF",
+                    data=pdf_bytes,
+                    file_name="sams_labels.pdf",
+                    mime="application/pdf",
+                    key="download_sams_pdf",
+                )
+        else:
+            st.write("Upload source files to generate Sam's GCI labels.")
+
+            mdg_file = st.file_uploader(
+                "Upload SAMS MDG Label template.xlsx",
+                type=["xlsx", "xlsm", "xls"],
+                key="sams_gci_mdg_file_uploader",
+            )
+            gci_file = st.file_uploader(
+                "Upload Sams PO Labels with GCI.xlsx",
+                type=["xlsx", "xlsm", "xls"],
+                key="sams_gci_po_file_uploader",
+            )
+
+            st.info("GCI page count rule: 2 pages per MDG row.")
+
+            if mdg_file is None or gci_file is None:
+                st.info("Upload both GCI Excel files to continue.")
+            else:
+                try:
+                    payload = read_excel_sams_gci(mdg_file, gci_file)
+                except ValueError as exc:
+                    st.error(f"GCI validation error: {exc}")
+                    return
+                st.success(
+                    "Parsed "
+                    f"{len(payload.mdg_labels)} MDG rows, "
+                    f"{len(payload.bottom_rows)} bottom rows. "
+                    f"This will generate {payload.page_count} pages."
+                )
+
+                if st.button("Generate Sam's GCI PDF", type="primary", key="generate_sams_gci_pdf"):
+                    try:
+                        pdf_bytes = generate_sams_gci_pdf(payload)
+                    except ValueError as exc:
+                        st.error(f"GCI validation error: {exc}")
+                        return
+                    st.download_button(
+                        label="Download Sam's GCI Labels PDF",
+                        data=pdf_bytes,
+                        file_name="sams_gci_labels.pdf",
+                        mime="application/pdf",
+                        key="download_sams_gci_pdf",
+                    )
 
     except ValueError as exc:
         st.error(f"Validation error: {exc}")
