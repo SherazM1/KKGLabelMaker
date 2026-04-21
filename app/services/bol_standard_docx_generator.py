@@ -131,19 +131,30 @@ def _unique_destination_path(directory: Path, base_name: str, extension: str) ->
 
 
 def _replace_text_in_paragraph(paragraph, replacements: dict[str, str]) -> None:
-    for run in paragraph.runs:
-        updated = run.text
-        for source, target in replacements.items():
-            if source in updated:
-                updated = updated.replace(source, target)
-        run.text = updated
+    runs = paragraph.runs
+    if not runs:
+        return
 
-    paragraph_text = paragraph.text
+    combined_text = "".join(run.text for run in runs)
+    updated_text = combined_text
     for source, target in replacements.items():
-        if source in paragraph_text:
-            paragraph_text = paragraph_text.replace(source, target)
-    if paragraph.text != paragraph_text:
-        paragraph.text = paragraph_text
+        if source in updated_text:
+            updated_text = updated_text.replace(source, target)
+
+    if updated_text == combined_text:
+        return
+
+    original_lengths = [len(run.text) for run in runs]
+    cursor = 0
+    last_idx = len(runs) - 1
+    for idx, run in enumerate(runs):
+        if idx == last_idx:
+            run.text = updated_text[cursor:]
+            break
+
+        take = min(original_lengths[idx], max(0, len(updated_text) - cursor))
+        run.text = updated_text[cursor:cursor + take]
+        cursor += take
 
 
 def _replace_text_in_document(doc: Document, replacements: dict[str, str]) -> None:
