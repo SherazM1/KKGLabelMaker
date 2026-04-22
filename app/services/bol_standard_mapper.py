@@ -150,18 +150,18 @@ def map_standard_rows_to_records(rows: list[BolStandardRow]) -> list[BolStandard
         for row in bol_rows:
             item_line = BolStandardItemLine(
                 source_row_number=row.source_row_number,
-                pallet_qty=row.quantity,
+                pallet_qty=row.unit_qty,
                 type="PLT",
                 po_number=row.wm_po,
                 item_description=row.item_description,
                 item_number=row.item_number,
                 upc=row.upc,
-                skids=row.quantity,
+                skids=row.plt_qty,
                 weight_each=row.weight_each,
             )
             item_lines.append(item_line)
 
-            qty_number = _parse_number(row.quantity)
+            qty_number = _parse_number(row.unit_qty)
             if qty_number is not None:
                 total_skids += qty_number
 

@@ -160,14 +160,26 @@ def _replace_text_in_paragraph(paragraph, replacements: dict[str, str]) -> None:
 
 
 def _replace_text_in_document(doc: Document, replacements: dict[str, str]) -> None:
+    def _replace_in_table_collection(tables: list[Table]) -> None:
+        for table in tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        _replace_text_in_paragraph(paragraph, replacements)
+
     for paragraph in doc.paragraphs:
         _replace_text_in_paragraph(paragraph, replacements)
 
-    for table in doc.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                for paragraph in cell.paragraphs:
-                    _replace_text_in_paragraph(paragraph, replacements)
+    _replace_in_table_collection(doc.tables)
+
+    for section in doc.sections:
+        for paragraph in section.header.paragraphs:
+            _replace_text_in_paragraph(paragraph, replacements)
+        _replace_in_table_collection(section.header.tables)
+
+        for paragraph in section.footer.paragraphs:
+            _replace_text_in_paragraph(paragraph, replacements)
+        _replace_in_table_collection(section.footer.tables)
 
 
 def _replace_tokens_in_row_element(row_element, replacements: dict[str, str]) -> None:
@@ -212,6 +224,42 @@ def _override_consignee_street(doc: Document, consignee_street: str) -> None:
                 return
 
 
+def _suppress_duplicate_ship_from_city_state_line(doc: Document, ship_from_location: str) -> None:
+    location_value = ship_from_location.strip()
+    if not location_value:
+        return
+
+    for table in doc.tables:
+        in_ship_from_block = False
+        seen_location_row = False
+
+        for row in table.rows:
+            row_cells = row.cells
+            if not row_cells:
+                continue
+
+            row_text_upper = " ".join(cell.text.strip() for cell in row_cells).upper()
+
+            if "FROM (SHIPPER)" in row_text_upper:
+                in_ship_from_block = True
+                seen_location_row = False
+                continue
+
+            if in_ship_from_block and "TO (CONSIGNEE)" in row_text_upper:
+                break
+
+            if not in_ship_from_block:
+                continue
+
+            row_text = " ".join(cell.text.strip() for cell in row_cells)
+            if location_value in row_text:
+                if not seen_location_row:
+                    seen_location_row = True
+                else:
+                    for cell in row_cells:
+                        cell.text = ""
+
+
 def _item_row_replacements(line: BolStandardItemLine) -> dict[str, str]:
     replacements: dict[str, str] = {}
     for alias in ITEM_TOKEN_ALIASES["QTY"]:
@@ -233,6 +281,20 @@ def _item_row_replacements(line: BolStandardItemLine) -> dict[str, str]:
 
 def _total_qty_display(total_skids: float) -> str:
     return str(int(total_skids)) if float(total_skids).is_integer() else str(total_skids)
+
+
+def _parse_numeric(value: str) -> float | None:
+    cleaned = (value or "").replace(",", "").strip()
+    if not cleaned:
+        return None
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
+
+
+def _format_number(value: float) -> str:
+    return str(int(value)) if float(value).is_integer() else f"{value:.2f}".rstrip("0").rstrip(".")
 
 
 def _format_ship_date_for_template(raw_ship_date: str) -> str:
@@ -272,7 +334,7 @@ def _format_ship_date_for_template(raw_ship_date: str) -> str:
 def _populate_item_table(
     table: Table,
     item_lines: list[BolStandardItemLine],
-    total_skids: float,
+    total_qty: float,
     *,
     compact_standard_item_area: bool = False,
 ) -> None:
@@ -344,8 +406,73 @@ def _populate_item_table(
         _replace_tokens_in_row_element(new_tr, _item_row_replacements(line))
         anchor_tr.addprevious(new_tr)
 
+    header_cells = [cell.text.strip().upper() for cell in table.rows[header_idx].cells]
+    qty_col_indexes = [
+        idx for idx, cell_text in enumerate(header_cells)
+        if "QTY" in cell_text and "# SKIDS" not in cell_text
+    ]
+    skids_col_indexes = [idx for idx, cell_text in enumerate(header_cells) if "# SKIDS" in cell_text]
+    type_col_indexes = [idx for idx, cell_text in enumerate(header_cells) if cell_text == "TYPE"]
+    weight_col_indexes = [idx for idx, cell_text in enumerate(header_cells) if "WEIGHT" in cell_text]
+
+    totals_anchor_idx = None
+    for idx in range(header_idx + 1, len(table.rows)):
+        row_text_upper = " ".join(cell.text.strip() for cell in table.rows[idx].cells).upper()
+        if "TOTALS" in row_text_upper:
+            totals_anchor_idx = idx
+            break
+
+    if totals_anchor_idx is None:
+        raise ValueError("Could not locate the TOTALS row in the DOCX template.")
+
+    item_start_idx = totals_anchor_idx - len(item_lines)
+    for line_offset, line in enumerate(item_lines):
+        row_idx = item_start_idx + line_offset
+        if row_idx <= header_idx or row_idx >= len(table.rows):
+            continue
+
+        row_cells = table.rows[row_idx].cells
+        for col_idx in qty_col_indexes:
+            if col_idx < len(row_cells):
+                row_cells[col_idx].text = line.pallet_qty
+        for col_idx in skids_col_indexes:
+            if col_idx < len(row_cells):
+                row_cells[col_idx].text = line.skids
+        for col_idx in type_col_indexes:
+            if col_idx < len(row_cells):
+                row_cells[col_idx].text = line.type
+        for col_idx in weight_col_indexes:
+            if col_idx < len(row_cells):
+                row_cells[col_idx].text = line.weight_each
+
+    total_skids_value = 0.0
+    total_weight_value = 0.0
+    for line in item_lines:
+        numeric_skids = _parse_numeric(line.skids)
+        if numeric_skids is not None:
+            total_skids_value += numeric_skids
+
+        numeric_weight = _parse_numeric(line.weight_each)
+        if numeric_weight is not None:
+            total_weight_value += numeric_weight
+
+    totals_row_cells = table.rows[totals_anchor_idx].cells
+    total_qty_display = _total_qty_display(total_qty)
+    total_skids_display = _format_number(total_skids_value)
+    total_weight_display = _format_number(total_weight_value)
+
+    for col_idx in qty_col_indexes:
+        if col_idx < len(totals_row_cells):
+            totals_row_cells[col_idx].text = total_qty_display
+    for col_idx in skids_col_indexes:
+        if col_idx < len(totals_row_cells):
+            totals_row_cells[col_idx].text = total_skids_display
+    for col_idx in weight_col_indexes:
+        if col_idx < len(totals_row_cells):
+            totals_row_cells[col_idx].text = total_weight_display
+
     totals_replacements = {
-        _tok("TOTAL_QTY"): _total_qty_display(total_skids),
+        _tok("TOTAL_QTY"): "",
         _tok("TOTAL_WEIGHT"): "",
     }
     for row in table.rows:
@@ -407,6 +534,7 @@ def _apply_template_record_values(
             "\u00ab COMMENTS \u00bb": comments_value,
         },
     )
+    _suppress_duplicate_ship_from_city_state_line(doc, selected_facility["location"])
     _override_consignee_street(doc, record.consignee_street)
 
     last_error: Exception | None = None

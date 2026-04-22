@@ -23,6 +23,6 @@ class BolStandardRow:
     item_number: str
     upc: str
     item_description: str
-    quantity: str
+    unit_qty: str
+    plt_qty: str
     weight_each: str
-

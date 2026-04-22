@@ -32,7 +32,8 @@ REQUIRED_COLUMN_SPECS: dict[str, dict[str, str | list[str]]] = {
         "primary": "PalletDescription",
         "fallback_aliases": ["Pallet Description", "PALLETDESCRIPTION"],
     },
-    "quantity": {"primary": "QTY", "fallback_aliases": []},
+    "unit_qty": {"primary": "Unit Qty", "fallback_aliases": ["UNIT QTY", "QTY"]},
+    "plt_qty": {"primary": "PLT QTY", "fallback_aliases": ["Pallet Qty", "PALLET QTY"]},
     "weight_each": {"primary": "weight each", "fallback_aliases": ["WEIGHT EACH"]},
 }
 
@@ -149,7 +150,8 @@ def parse_standard_bol_excel(file: Any) -> list[BolStandardRow]:
                 item_number=row_values["item_number"],
                 upc=row_values["upc"],
                 item_description=row_values["item_description"],
-                quantity=row_values["quantity"],
+                unit_qty=row_values["unit_qty"],
+                plt_qty=row_values["plt_qty"],
                 weight_each=row_values["weight_each"],
             )
         )
