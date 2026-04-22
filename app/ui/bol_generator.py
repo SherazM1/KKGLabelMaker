@@ -321,7 +321,7 @@ def render_bol_generator_view() -> None:
     st.markdown("---")
 
     st.subheader("Batch Comment")
-    st.caption("Optional comment applied to this batch when a record does not have its own comment.")
+    st.caption("Optional comment for entire BOL program.")
     st.session_state["bol_batch_comment"] = st.text_area(
         "Batch-level comment (optional)",
         value=st.session_state.get("bol_batch_comment", ""),
@@ -395,62 +395,62 @@ def render_bol_generator_view() -> None:
 
     st.markdown("---")
 
-    st.subheader("Review Records")
-    grouped_records: list[BolStandardRecord] = st.session_state["bol_grouped_records"]
-    _sync_review_state(grouped_records)
+    with st.expander("Review Records", expanded=False):
+        grouped_records: list[BolStandardRecord] = st.session_state["bol_grouped_records"]
+        _sync_review_state(grouped_records)
 
-    comments_state: dict[str, str] = st.session_state["bol_record_comments"]
-    selection_state: dict[str, bool] = st.session_state["bol_record_selection"]
+        comments_state: dict[str, str] = st.session_state["bol_record_comments"]
+        selection_state: dict[str, bool] = st.session_state["bol_record_selection"]
 
-    for index, record in enumerate(grouped_records):
-        key = _record_key(record, index)
-        safe_key = _widget_safe_key(key)
-        label = record.bol_number or "(missing BOL #)"
+        for index, record in enumerate(grouped_records):
+            key = _record_key(record, index)
+            safe_key = _widget_safe_key(key)
+            label = record.bol_number or "(missing BOL #)"
 
-        include_value = st.checkbox(
-            f"Include BOL {label}",
-            value=selection_state.get(key, record.is_ready),
-            key=f"bol_include_{index}_{safe_key}",
+            include_value = st.checkbox(
+                f"Include BOL {label}",
+                value=selection_state.get(key, record.is_ready),
+                key=f"bol_include_{index}_{safe_key}",
+            )
+            selection_state[key] = include_value
+            record.selected_for_generation = include_value
+
+            comments_value = st.text_area(
+                f"Comments for BOL {label}",
+                value=comments_state.get(key, record.comments),
+                key=f"bol_comments_{index}_{safe_key}",
+                placeholder="Optional notes for this BOL record.",
+            )
+            comments_state[key] = comments_value
+            record.comments = comments_value
+
+            if record.missing_required_fields:
+                st.caption("Missing required: " + ", ".join(record.missing_required_fields))
+            if record.warnings:
+                st.caption("Warnings: " + " | ".join(record.warnings))
+            if record.issues and not (record.missing_required_fields or record.warnings):
+                st.caption("Issues: " + " | ".join(record.issues))
+
+        total_records = len(grouped_records)
+        ready_records = sum(1 for record in grouped_records if record.is_ready)
+        issue_records = total_records - ready_records
+        selected_records = sum(
+            1
+            for record in grouped_records
+            if record.selected_for_generation and record.is_ready
         )
-        selection_state[key] = include_value
-        record.selected_for_generation = include_value
 
-        comments_value = st.text_area(
-            f"Comments for BOL {label}",
-            value=comments_state.get(key, record.comments),
-            key=f"bol_comments_{index}_{safe_key}",
-            placeholder="Optional notes for this BOL record.",
+        metric_cols = st.columns(4)
+        metric_cols[0].metric("Total records found", total_records)
+        metric_cols[1].metric("Ready records", ready_records)
+        metric_cols[2].metric("Records with issues", issue_records)
+        metric_cols[3].metric("Records selected for generation", selected_records)
+
+        st.dataframe(
+            _records_to_review_records(grouped_records, st.session_state["bol_mode"]),
+            use_container_width=True,
+            hide_index=True,
         )
-        comments_state[key] = comments_value
-        record.comments = comments_value
-
-        if record.missing_required_fields:
-            st.caption("Missing required: " + ", ".join(record.missing_required_fields))
-        if record.warnings:
-            st.caption("Warnings: " + " | ".join(record.warnings))
-        if record.issues and not (record.missing_required_fields or record.warnings):
-            st.caption("Issues: " + " | ".join(record.issues))
-
-    total_records = len(grouped_records)
-    ready_records = sum(1 for record in grouped_records if record.is_ready)
-    issue_records = total_records - ready_records
-    selected_records = sum(
-        1
-        for record in grouped_records
-        if record.selected_for_generation and record.is_ready
-    )
-
-    metric_cols = st.columns(4)
-    metric_cols[0].metric("Total records found", total_records)
-    metric_cols[1].metric("Ready records", ready_records)
-    metric_cols[2].metric("Records with issues", issue_records)
-    metric_cols[3].metric("Records selected for generation", selected_records)
-
-    st.dataframe(
-        _records_to_review_records(grouped_records, st.session_state["bol_mode"]),
-        use_container_width=True,
-        hide_index=True,
-    )
 
     st.markdown("---")
 
