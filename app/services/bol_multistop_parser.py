@@ -57,12 +57,19 @@ def _normalize_header(header: str) -> str:
 
 
 def _normalize_header_for_fallback(header: str) -> str:
-    cleaned = str(header).strip().upper()
+    cleaned = str(header).replace("\r", " ").replace("\n", " ")
+    cleaned = cleaned.strip().lower()
     cleaned = re.sub(r"\s*#\s*", "#", cleaned)
     # Tolerate minor punctuation differences (e.g., DEPT. vs DEPT, CITY, STATE, ZIP variants).
     cleaned = re.sub(r"[.,;:/\\()\-\_]+", " ", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned
+
+
+def _normalize_header_compact(header: str) -> str:
+    cleaned = _normalize_header_for_fallback(header)
+    # Second-pass comparison form: remove whitespace for compacted header variants.
+    return cleaned.replace(" ", "")
 
 
 def _candidate_multistop_sheet_names(available_sheet_names: list[str]) -> list[str]:
@@ -86,7 +93,9 @@ def _candidate_multistop_sheet_names(available_sheet_names: list[str]) -> list[s
 def _resolve_columns_with_missing(columns: list[str]) -> tuple[dict[str, str], list[str]]:
     resolved_columns = [str(col) for col in columns]
     exact_columns = {col: col for col in resolved_columns}
+    lowered_exact_columns = {col.lower(): col for col in resolved_columns}
     normalized_columns = {_normalize_header_for_fallback(col): col for col in resolved_columns}
+    compact_columns = {_normalize_header_compact(col): col for col in resolved_columns}
 
     resolved: dict[str, str] = {}
     missing: list[str] = []
@@ -98,11 +107,21 @@ def _resolve_columns_with_missing(columns: list[str]) -> tuple[dict[str, str], l
         if source_name in exact_columns:
             resolved_name = exact_columns[source_name]
 
-        # 2) Controlled normalized fallback for slight formatting/case/punctuation differences.
+        # 2) Exact text match ignoring only case.
+        if resolved_name is None:
+            resolved_name = lowered_exact_columns.get(source_name.lower())
+
+        # 3) Controlled normalized fallback for slight formatting/case/punctuation differences.
         if resolved_name is None:
             normalized_name = _normalize_header_for_fallback(source_name)
             if normalized_name in normalized_columns:
                 resolved_name = normalized_columns[normalized_name]
+
+        # 4) Compacted fallback for equivalent forms like "DC ST" vs "DCST".
+        if resolved_name is None:
+            compact_name = _normalize_header_compact(source_name)
+            if compact_name in compact_columns:
+                resolved_name = compact_columns[compact_name]
 
         if resolved_name is None:
             missing.append(f"{logical_name} (expected '{source_name}')")
