@@ -11,6 +11,12 @@ from app.models.bol_multistop_row import BolMultistopRow
 
 
 MULTISTOP_SHEET_NAME = "MAIN LOAD SHEET"
+MULTISTOP_SHEET_NAME_VARIANTS: tuple[str, ...] = (
+    "MAIN LOAD SHEET",
+    "Load sheet",
+    "LOAD SHEET",
+    "Main Load Sheet",
+)
 
 REQUIRED_COLUMN_SPECS: dict[str, str] = {
     "kk_load": "KK Load",
@@ -46,6 +52,28 @@ def _normalize_header(header: str) -> str:
     cleaned = re.sub(r"\s*#\s*", "#", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned)
     return cleaned.upper()
+
+
+def _resolve_multistop_sheet_name(file: Any) -> str:
+    file.seek(0)
+    workbook = pd.ExcelFile(file)
+    available_sheet_names = [str(name) for name in workbook.sheet_names]
+
+    exact_lookup = {name: name for name in available_sheet_names}
+    for candidate in MULTISTOP_SHEET_NAME_VARIANTS:
+        if candidate in exact_lookup:
+            return exact_lookup[candidate]
+
+    normalized_lookup = {_normalize_header(name): name for name in available_sheet_names}
+    for candidate in MULTISTOP_SHEET_NAME_VARIANTS:
+        normalized_candidate = _normalize_header(candidate)
+        if normalized_candidate in normalized_lookup:
+            return normalized_lookup[normalized_candidate]
+
+    raise ValueError(
+        "Required worksheet was not found for Multistop parsing. "
+        f"Expected one of: {', '.join(MULTISTOP_SHEET_NAME_VARIANTS)}."
+    )
 
 
 def _resolve_columns(columns: list[str]) -> dict[str, str]:
@@ -108,13 +136,10 @@ def parse_multistop_bol_excel(file: Any) -> list[BolMultistopRow]:
         raise ValueError("No file uploaded. Upload an Excel file to parse.")
 
     try:
+        resolved_sheet_name = _resolve_multistop_sheet_name(file)
         file.seek(0)
-        df = pd.read_excel(file, sheet_name=MULTISTOP_SHEET_NAME, dtype=object)
+        df = pd.read_excel(file, sheet_name=resolved_sheet_name, dtype=object)
     except ValueError as exc:
-        if "Worksheet named" in str(exc):
-            raise ValueError(
-                "Required worksheet 'MAIN LOAD SHEET' was not found in the uploaded workbook."
-            ) from exc
         raise
 
     if df.empty:
