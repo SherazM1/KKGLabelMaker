@@ -605,7 +605,7 @@ def _apply_template_record_values(
         _tok("COMMENTS"): comments_value,
         _tok("SHIP_FROM"): selected_facility["facility_name"],
         _tok("SHIP_FROM_ADDRESS"): selected_facility["address"],
-        _tok("SHIP_FROM_CITY_STATE_ZIP"): selected_facility["location"],
+        _tok("SHIP_FROM_CITY_STATE_ZIP"): "",
         _tok("SHIP_TO_NAME"): record.consignee_company,
         _tok("SHIP_TO_ADDRESS"): record.consignee_street,
         _tok("SHIP_TO_CITY_STATE_ZIP"): record.consignee_city_state_zip,
