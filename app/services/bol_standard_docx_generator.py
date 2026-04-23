@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from tempfile import mkdtemp
+from xml.sax.saxutils import escape
+import zipfile
 
 from docx import Document
 from docx.table import Table
@@ -133,33 +135,21 @@ def _unique_destination_path(directory: Path, base_name: str, extension: str) ->
 
 
 def _replace_text_in_paragraph(paragraph, replacements: dict[str, str]) -> None:
-    runs = paragraph.runs
-    if not runs:
-        return
-
-    combined_text = "".join(run.text for run in runs)
-    updated_text = combined_text
-    for source, target in replacements.items():
-        if source in updated_text:
-            updated_text = updated_text.replace(source, target)
-
-    if updated_text == combined_text:
-        return
-
-    original_lengths = [len(run.text) for run in runs]
-    cursor = 0
-    last_idx = len(runs) - 1
-    for idx, run in enumerate(runs):
-        if idx == last_idx:
-            run.text = updated_text[cursor:]
-            break
-
-        take = min(original_lengths[idx], max(0, len(updated_text) - cursor))
-        run.text = updated_text[cursor:cursor + take]
-        cursor += take
+    text_nodes = paragraph._p.findall(".//w:t", paragraph._p.nsmap)
+    instr_nodes = paragraph._p.findall(".//w:instrText", paragraph._p.nsmap)
+    for node in [*text_nodes, *instr_nodes]:
+        text = node.text or ""
+        updated = text
+        for source, target in replacements.items():
+            if source in updated:
+                updated = updated.replace(source, target)
+        if updated != text:
+            node.text = updated
 
 
-def _replace_text_in_document(doc: Document, replacements: dict[str, str]) -> None:
+def _replace_text_in_document(
+    doc: Document, replacements: dict[str, str], *, include_xml_tree: bool = True
+) -> None:
     def _replace_in_table_collection(tables: list[Table]) -> None:
         for table in tables:
             for row in table.rows:
@@ -169,8 +159,9 @@ def _replace_text_in_document(doc: Document, replacements: dict[str, str]) -> No
                     _replace_in_table_collection(cell.tables)
 
     def _replace_in_element_tree(element) -> None:
-        namespaces = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
-        for node in element.xpath(".//w:t | .//w:instrText", namespaces=namespaces):
+        text_nodes = element.findall(".//w:t", element.nsmap)
+        instr_nodes = element.findall(".//w:instrText", element.nsmap)
+        for node in [*text_nodes, *instr_nodes]:
             text = node.text or ""
             updated = text
             for source, target in replacements.items():
@@ -183,18 +174,21 @@ def _replace_text_in_document(doc: Document, replacements: dict[str, str]) -> No
         _replace_text_in_paragraph(paragraph, replacements)
 
     _replace_in_table_collection(doc.tables)
-    _replace_in_element_tree(doc.element)
+    if include_xml_tree:
+        _replace_in_element_tree(doc.element)
 
     for section in doc.sections:
         for paragraph in section.header.paragraphs:
             _replace_text_in_paragraph(paragraph, replacements)
         _replace_in_table_collection(section.header.tables)
-        _replace_in_element_tree(section.header._element)
+        if include_xml_tree:
+            _replace_in_element_tree(section.header._element)
 
         for paragraph in section.footer.paragraphs:
             _replace_text_in_paragraph(paragraph, replacements)
         _replace_in_table_collection(section.footer.tables)
-        _replace_in_element_tree(section.footer._element)
+        if include_xml_tree:
+            _replace_in_element_tree(section.footer._element)
 
 
 def _replace_tokens_in_row_element(row_element, replacements: dict[str, str]) -> None:
@@ -269,7 +263,6 @@ def _suppress_duplicate_ship_from_city_state_line(doc: Document, ship_from_locat
 
             if "FROM (SHIPPER)" in row_text_upper:
                 in_ship_from_block = True
-                seen_location_row = False
                 continue
 
             if in_ship_from_block and "TO (CONSIGNEE)" in row_text_upper:
@@ -427,21 +420,35 @@ def _populate_item_table(
     table_xml = table._tbl
     template_trs = [deepcopy(table.rows[idx]._tr) for idx in contiguous_item_row_indices]
     anchor_tr = table.rows[insertion_anchor_idx]._tr
+    data_row_start_idx = contiguous_item_row_indices[0]
 
     if compact_standard_item_area:
         remove_start_idx = contiguous_item_row_indices[0]
         remove_end_idx = insertion_anchor_idx - 1
         rows_to_remove = list(range(remove_start_idx, remove_end_idx + 1))
+        for idx in sorted(rows_to_remove, reverse=True):
+            table_xml.remove(table.rows[idx]._tr)
+
+        for idx, line in enumerate(item_lines):
+            new_tr = deepcopy(template_trs[idx % len(template_trs)])
+            _replace_tokens_in_row_element(new_tr, _item_row_replacements(line))
+            anchor_tr.addprevious(new_tr)
     else:
-        rows_to_remove = contiguous_item_row_indices
+        empty_item_replacements = {token: "" for token in ITEM_PLACEHOLDER_TOKENS}
+        for template_idx, row_idx in enumerate(contiguous_item_row_indices):
+            row_tr = table.rows[row_idx]._tr
+            if template_idx < len(item_lines):
+                _replace_tokens_in_row_element(
+                    row_tr, _item_row_replacements(item_lines[template_idx])
+                )
+            else:
+                _replace_tokens_in_row_element(row_tr, empty_item_replacements)
 
-    for idx in sorted(rows_to_remove, reverse=True):
-        table_xml.remove(table.rows[idx]._tr)
-
-    for idx, line in enumerate(item_lines):
-        new_tr = deepcopy(template_trs[idx % len(template_trs)])
-        _replace_tokens_in_row_element(new_tr, _item_row_replacements(line))
-        anchor_tr.addprevious(new_tr)
+        if len(item_lines) > len(contiguous_item_row_indices):
+            for idx, line in enumerate(item_lines[len(contiguous_item_row_indices):], start=0):
+                new_tr = deepcopy(template_trs[idx % len(template_trs)])
+                _replace_tokens_in_row_element(new_tr, _item_row_replacements(line))
+                anchor_tr.addprevious(new_tr)
 
     header_cells = [cell.text.strip().upper() for cell in table.rows[header_idx].cells]
     qty_col_indexes = [
@@ -462,25 +469,26 @@ def _populate_item_table(
     if totals_anchor_idx is None:
         raise ValueError("Could not locate the TOTALS row in the DOCX template.")
 
-    item_start_idx = totals_anchor_idx - len(item_lines)
-    for line_offset, line in enumerate(item_lines):
-        row_idx = item_start_idx + line_offset
-        if row_idx <= header_idx or row_idx >= len(table.rows):
-            continue
+    if compact_standard_item_area:
+        item_start_idx = totals_anchor_idx - len(item_lines)
+        for line_offset, line in enumerate(item_lines):
+            row_idx = item_start_idx + line_offset
+            if row_idx <= header_idx or row_idx >= len(table.rows):
+                continue
 
-        row_cells = table.rows[row_idx].cells
-        for col_idx in qty_col_indexes:
-            if col_idx < len(row_cells):
-                row_cells[col_idx].text = line.pallet_qty
-        for col_idx in skids_col_indexes:
-            if col_idx < len(row_cells):
-                row_cells[col_idx].text = line.skids
-        for col_idx in type_col_indexes:
-            if col_idx < len(row_cells):
-                row_cells[col_idx].text = line.type
-        for col_idx in weight_col_indexes:
-            if col_idx < len(row_cells):
-                row_cells[col_idx].text = line.weight_each
+            row_cells = table.rows[row_idx].cells
+            for col_idx in qty_col_indexes:
+                if col_idx < len(row_cells):
+                    row_cells[col_idx].text = line.pallet_qty
+            for col_idx in skids_col_indexes:
+                if col_idx < len(row_cells):
+                    row_cells[col_idx].text = line.skids
+            for col_idx in type_col_indexes:
+                if col_idx < len(row_cells):
+                    row_cells[col_idx].text = line.type
+            for col_idx in weight_col_indexes:
+                if col_idx < len(row_cells):
+                    row_cells[col_idx].text = line.weight_each
 
     total_skids_value = 0.0
     total_weight_value = 0.0
@@ -493,27 +501,35 @@ def _populate_item_table(
         if numeric_weight is not None:
             total_weight_value += numeric_weight
 
-    totals_row_cells = table.rows[totals_anchor_idx].cells
     total_qty_display = _total_qty_display(total_qty)
     total_skids_display = _format_number(total_skids_value)
     total_weight_display = _format_number(total_weight_value)
 
-    for col_idx in qty_col_indexes:
-        if col_idx < len(totals_row_cells):
-            totals_row_cells[col_idx].text = total_qty_display
-    for col_idx in skids_col_indexes:
-        if col_idx < len(totals_row_cells):
-            totals_row_cells[col_idx].text = total_skids_display
-    for col_idx in weight_col_indexes:
-        if col_idx < len(totals_row_cells):
-            totals_row_cells[col_idx].text = total_weight_display
+    if compact_standard_item_area:
+        totals_row_cells = table.rows[totals_anchor_idx].cells
+        for col_idx in qty_col_indexes:
+            if col_idx < len(totals_row_cells):
+                totals_row_cells[col_idx].text = total_qty_display
+        for col_idx in skids_col_indexes:
+            if col_idx < len(totals_row_cells):
+                totals_row_cells[col_idx].text = total_skids_display
+        for col_idx in weight_col_indexes:
+            if col_idx < len(totals_row_cells):
+                totals_row_cells[col_idx].text = total_weight_display
 
-    totals_replacements = {
-        _tok("TOTAL_QTY"): "",
-        _tok("TOTAL_WEIGHT"): "",
-    }
-    for row in table.rows:
-        _replace_tokens_in_row_element(row._tr, totals_replacements)
+        totals_replacements = {
+            _tok("TOTAL_QTY"): "",
+            _tok("TOTAL_WEIGHT"): "",
+        }
+        for row in table.rows:
+            _replace_tokens_in_row_element(row._tr, totals_replacements)
+    else:
+        totals_replacements = {
+            _tok("TOTAL_QTY"): total_qty_display,
+            _tok("TOTAL_WEIGHT"): total_weight_display,
+        }
+        for row in table.rows:
+            _replace_tokens_in_row_element(row._tr, totals_replacements)
 
 
 def _resolve_comment_for_record(record_comment: str, batch_comment: str | None) -> str:
@@ -522,6 +538,42 @@ def _resolve_comment_for_record(record_comment: str, batch_comment: str | None) 
         return record_value
 
     return (batch_comment or "").strip()
+
+
+def _postprocess_comments_in_saved_docx(destination: Path, resolved_comment: str) -> None:
+    xml_path = "word/document.xml"
+    with zipfile.ZipFile(destination, "r") as archive:
+        if xml_path not in archive.namelist():
+            return
+        file_payloads = {name: archive.read(name) for name in archive.namelist()}
+
+    xml_text = file_payloads[xml_path].decode("utf-8", errors="ignore")
+    updated_xml = xml_text
+    safe_comment = escape(resolved_comment)
+
+    comment_tokens = (
+        _tok("COMMENTS"),
+        "<<COMMENTS>>",
+        "<< COMMENTS >>",
+        "\u00ab COMMENTS \u00bb",
+    )
+    for token in comment_tokens:
+        updated_xml = updated_xml.replace(token, safe_comment)
+
+    if resolved_comment and safe_comment not in updated_xml:
+        updated_xml = updated_xml.replace("Comments:</w:t>", f"Comments: {safe_comment}</w:t>", 1)
+        updated_xml = updated_xml.replace("COMMENTS:</w:t>", f"COMMENTS: {safe_comment}</w:t>", 1)
+
+    updated_xml = updated_xml.replace(" MERGEFIELD COMMENTS ", "")
+    updated_xml = updated_xml.replace("MERGEFIELD COMMENTS", "")
+
+    if updated_xml == xml_text:
+        return
+
+    file_payloads[xml_path] = updated_xml.encode("utf-8")
+    with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, payload in file_payloads.items():
+            archive.writestr(name, payload)
 
 
 def _apply_template_record_values(
@@ -534,6 +586,11 @@ def _apply_template_record_values(
 ) -> list[str]:
     notices: list[str] = []
     comments_value = _resolve_comment_for_record(record.comments, batch_comment)
+    has_comments_placeholder = (
+        _document_contains_token(doc, _tok("COMMENTS"))
+        or _document_contains_token(doc, "<<COMMENTS>>")
+        or _document_contains_token(doc, "MERGEFIELD COMMENTS")
+    )
 
     replacements = {
         _tok("BOL"): record.bol_number,
@@ -557,7 +614,11 @@ def _apply_template_record_values(
         _tok("BILL_TO_ADDRESS"): record.bill_to.street,
         _tok("BILL_TO_CITY_SATE_ZIP"): record.bill_to.city_state_zip,
     }
-    _replace_text_in_document(doc, replacements)
+    _replace_text_in_document(
+        doc,
+        replacements,
+        include_xml_tree=compact_standard_item_area,
+    )
     _replace_text_in_document(
         doc,
         {
@@ -568,7 +629,17 @@ def _apply_template_record_values(
             " MERGEFIELD COMMENTS ": "",
             "MERGEFIELD COMMENTS": "",
         },
+        include_xml_tree=compact_standard_item_area,
     )
+    if comments_value and not has_comments_placeholder:
+        _replace_text_in_document(
+            doc,
+            {
+                "Comments:": f"Comments: {comments_value}",
+                "COMMENTS:": f"COMMENTS: {comments_value}",
+            },
+            include_xml_tree=compact_standard_item_area,
+        )
     _suppress_duplicate_ship_from_city_state_line(doc, selected_facility["location"])
     _override_consignee_street(doc, record.consignee_street)
 
@@ -636,6 +707,7 @@ def generate_standard_docx_set(
         try:
             doc = Document(str(resolved_template))
             is_standard_template = resolved_template.name == STANDARD_TEMPLATE_PATH.name
+            resolved_comment = _resolve_comment_for_record(record.comments, batch_comment)
             record_notices = _apply_template_record_values(
                 doc,
                 record,
@@ -650,6 +722,7 @@ def generate_standard_docx_set(
             )
             filename = destination.name
             doc.save(str(destination))
+            _postprocess_comments_in_saved_docx(destination, resolved_comment)
 
             generated.append(
                 GeneratedDocxFile(
