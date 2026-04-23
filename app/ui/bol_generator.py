@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import streamlit as st
 
 from app.models.bol_standard_record import BolStandardRecord
 from app.models.bol_standard_row import BolStandardRow
+from app.services.bol_multistop_docx_generator import (
+    MULTISTOP_TEMPLATE_PATH,
+    generate_multistop_docx_set,
+)
+from app.services.bol_multistop_mapper import map_multistop_rows_to_records
+from app.services.bol_multistop_parser import parse_multistop_bol_excel
 from app.services.bol_file_bundle_service import StandardBundleResult, create_standard_bundles
 from app.services.bol_standard_docx_generator import (
     StandardDocxGenerationResult,
@@ -143,16 +150,29 @@ def _format_total_skids(value: float) -> int | float:
     return value
 
 
-def _record_key(record: BolStandardRecord, index: int) -> str:
-    bol_number = record.bol_number.strip()
-    return bol_number if bol_number else f"__MISSING_BOL__{index}"
+def _record_key(record: Any, index: int) -> str:
+    group_key = str(getattr(record, "group_key", "")).strip()
+    if group_key:
+        return group_key
+
+    bol_number = str(getattr(record, "bol_number", "")).strip()
+    load_number = str(getattr(record, "load_number", "")).strip()
+    kk_load_number = str(getattr(record, "kk_load_number", "")).strip()
+
+    if bol_number and load_number:
+        return f"{bol_number}::{load_number}"
+    if bol_number and kk_load_number:
+        return f"{bol_number}::{kk_load_number}"
+    if bol_number:
+        return bol_number
+    return f"__MISSING_BOL__{index}"
 
 
 def _widget_safe_key(raw_key: str) -> str:
     return "".join(char if char.isalnum() else "_" for char in raw_key)
 
 
-def _sync_review_state(records: list[BolStandardRecord]) -> None:
+def _sync_review_state(records: list[Any]) -> None:
     comments_state: dict[str, str] = st.session_state["bol_record_comments"]
     selection_state: dict[str, bool] = st.session_state["bol_record_selection"]
 
@@ -179,7 +199,30 @@ def _sync_review_state(records: list[BolStandardRecord]) -> None:
         del selection_state[key]
 
 
-def _records_to_review_records(records: list[BolStandardRecord], mode: str) -> pd.DataFrame:
+def _build_stop_summary(record: Any) -> str:
+    stops = getattr(record, "stops", None)
+    if not isinstance(stops, list) or not stops:
+        return "N/A"
+
+    parts: list[str] = []
+    for stop in stops:
+        stop_no = getattr(stop, "stop_number", "")
+        delivery_dc = str(getattr(stop, "delivery_dc", "")).strip()
+        dc_number = str(getattr(stop, "dc_number", "")).strip()
+
+        if delivery_dc:
+            summary_value = delivery_dc
+        elif dc_number:
+            summary_value = dc_number
+        else:
+            summary_value = "(missing DC)"
+
+        parts.append(f"Stop {stop_no}: {summary_value}")
+
+    return " | ".join(parts) if parts else "N/A"
+
+
+def _records_to_review_records(records: list[Any], mode: str) -> pd.DataFrame:
     if not records:
         return pd.DataFrame(
             columns=[
@@ -188,9 +231,12 @@ def _records_to_review_records(records: list[BolStandardRecord], mode: str) -> p
                 "PO number",
                 "Ship date",
                 "Carrier",
+                "Stop count",
+                "Stop summary",
                 "Ship from",
                 "Ship to",
-                "Total quantity",
+                "Total cases",
+                "Total pallets",
                 "Total weight",
                 "Item line count",
                 "Mode",
@@ -219,14 +265,21 @@ def _records_to_review_records(records: list[BolStandardRecord], mode: str) -> p
         review_rows.append(
             {
                 "BOL number": record.bol_number,
-                "Load number": record.kk_load_number,
+                "Load number": getattr(record, "load_number", record.kk_load_number),
                 "PO number": record.po_number,
                 "Ship date": record.ship_date,
                 "Carrier": record.carrier,
+                "Stop count": getattr(record, "stop_count", "N/A"),
+                "Stop summary": _build_stop_summary(record),
                 "Ship from": ship_from,
                 "Ship to": ship_to,
-                "Total quantity": _format_total_skids(record.total_skids),
-                "Total weight": "N/A",
+                "Total cases": _format_total_skids(record.total_skids),
+                "Total pallets": getattr(record, "total_pallet", "N/A"),
+                "Total weight": (
+                    getattr(record, "total_ship_weight", "N/A")
+                    if getattr(record, "total_ship_weight", None) not in (None, "")
+                    else "N/A"
+                ),
                 "Item line count": len(record.item_lines),
                 "Mode": mode,
                 "Status": record.status,
@@ -234,6 +287,34 @@ def _records_to_review_records(records: list[BolStandardRecord], mode: str) -> p
         )
 
     return pd.DataFrame(review_rows)
+
+
+def _multistop_skip_breakdown(result: StandardDocxGenerationResult) -> dict[str, int]:
+    excluded = 0
+    validation = 0
+    other = 0
+
+    for skipped in result.skipped_records:
+        reason = skipped.reason.strip().lower()
+        if reason == "record excluded in review.":
+            excluded += 1
+        elif (
+            "unsupported stop count" in reason
+            or "missing required data" in reason
+            or "not ready" in reason
+            or "missing stop" in reason
+            or "malformed stop" in reason
+            or "duplicate stop" in reason
+        ):
+            validation += 1
+        else:
+            other += 1
+
+    return {
+        "excluded_in_review": excluded,
+        "validation_skipped": validation,
+        "other_skipped": other,
+    }
 
 
 def render_bol_generator_view() -> None:
@@ -343,32 +424,29 @@ def render_bol_generator_view() -> None:
         _clear_generation_state()
 
         selected_mode = st.session_state["bol_mode"]
-        if selected_mode == "Multistop":
+        try:
+            if selected_mode == "Multistop":
+                parsed_rows = parse_multistop_bol_excel(uploaded_file)
+                grouped_records = map_multistop_rows_to_records(parsed_rows)
+            else:
+                parsed_rows = parse_standard_bol_excel(uploaded_file)
+                grouped_records = map_standard_rows_to_records(parsed_rows)
+
+            if not grouped_records:
+                raise ValueError("No grouped BOL records were created from parsed rows.")
+            st.session_state["bol_parsed_rows"] = parsed_rows
+            st.session_state["bol_grouped_records"] = grouped_records
+            _sync_review_state(st.session_state["bol_grouped_records"])
+        except ValueError as exc:
             st.session_state["bol_parsed_rows"] = []
             st.session_state["bol_grouped_records"] = []
             _clear_review_state()
-            st.session_state["bol_parse_error"] = (
-                "Parsing is currently implemented for Standard and No Recourse modes only."
-            )
-        else:
-            try:
-                parsed_rows: list[BolStandardRow] = parse_standard_bol_excel(uploaded_file)
-                grouped_records = map_standard_rows_to_records(parsed_rows)
-                if not grouped_records:
-                    raise ValueError("No grouped BOL records were created from parsed rows.")
-                st.session_state["bol_parsed_rows"] = parsed_rows
-                st.session_state["bol_grouped_records"] = grouped_records
-                _sync_review_state(st.session_state["bol_grouped_records"])
-            except ValueError as exc:
-                st.session_state["bol_parsed_rows"] = []
-                st.session_state["bol_grouped_records"] = []
-                _clear_review_state()
-                st.session_state["bol_parse_error"] = str(exc)
-            except Exception as exc:
-                st.session_state["bol_parsed_rows"] = []
-                st.session_state["bol_grouped_records"] = []
-                _clear_review_state()
-                st.session_state["bol_parse_error"] = f"Unexpected parse error: {exc}"
+            st.session_state["bol_parse_error"] = str(exc)
+        except Exception as exc:
+            st.session_state["bol_parsed_rows"] = []
+            st.session_state["bol_grouped_records"] = []
+            _clear_review_state()
+            st.session_state["bol_parse_error"] = f"Unexpected parse error: {exc}"
 
     if parse_disabled:
         st.info("Upload an Excel file to enable parsing.")
@@ -400,7 +478,7 @@ def render_bol_generator_view() -> None:
     st.markdown("---")
 
     with st.expander("Review Records", expanded=False):
-        grouped_records: list[BolStandardRecord] = st.session_state["bol_grouped_records"]
+        grouped_records: list[Any] = st.session_state["bol_grouped_records"]
         _sync_review_state(grouped_records)
 
         comments_state: dict[str, str] = st.session_state["bol_record_comments"]
@@ -430,6 +508,8 @@ def render_bol_generator_view() -> None:
 
             if record.missing_required_fields:
                 st.caption("Missing required: " + ", ".join(record.missing_required_fields))
+            if record.status == "Unsupported Stop Count":
+                st.caption("Unsupported: stop count exceeds the current maximum of 3.")
             if record.warnings:
                 st.caption("Warnings: " + " | ".join(record.warnings))
             if record.issues and not (record.missing_required_fields or record.warnings):
@@ -471,26 +551,57 @@ def render_bol_generator_view() -> None:
     elif grouped_records and selected_records_total > 0 and selected_ready_records == 0:
         st.warning("Selected records exist, but none are ready for generation. Resolve missing data first.")
 
-    generate_docx_disabled = not any(
+    docx_generation_mode_supported = st.session_state["bol_mode"] in (
+        "Standard",
+        "No Recourse",
+        "Multistop",
+    )
+    pdf_generation_mode_supported = st.session_state["bol_mode"] in ("Standard", "No Recourse")
+    generate_all_mode_supported = st.session_state["bol_mode"] in ("Standard", "No Recourse")
+
+    generate_docx_disabled = (not docx_generation_mode_supported) or not any(
         record.selected_for_generation and record.is_ready for record in grouped_records
     )
     if st.button("Generate DOCX Set", disabled=generate_docx_disabled, use_container_width=True):
         try:
-            mode, template_path = _resolve_generation_context()
-            result = generate_standard_docx_set(
-                grouped_records,
-                selected_facility=st.session_state["bol_selected_facility"],
-                batch_comment=st.session_state.get("bol_batch_comment_textarea", ""),
-                template_path=template_path,
-                file_name_prefix=resolve_output_filename_prefix_for_mode(mode),
-            )
+            mode = st.session_state["bol_mode"]
+            if mode == "Multistop":
+                result = generate_multistop_docx_set(
+                    grouped_records,
+                    selected_facility=st.session_state["bol_selected_facility"],
+                    batch_comment=st.session_state.get("bol_batch_comment_textarea", ""),
+                    template_path=MULTISTOP_TEMPLATE_PATH,
+                    file_name_prefix="multistop_bol",
+                )
+            else:
+                _, template_path = _resolve_generation_context()
+                result = generate_standard_docx_set(
+                    grouped_records,
+                    selected_facility=st.session_state["bol_selected_facility"],
+                    batch_comment=st.session_state.get("bol_batch_comment_textarea", ""),
+                    template_path=template_path,
+                    file_name_prefix=resolve_output_filename_prefix_for_mode(mode),
+                )
             st.session_state["bol_docx_result"] = result
             st.session_state["bol_pdf_result"] = None
-            _refresh_bundles()
-            st.session_state["bol_generation_status"] = (
-                f"{mode} DOCX generation complete. Generated {result.generated_count}, "
-                f"skipped {result.skipped_count}, failed {result.failed_count}."
-            )
+            if mode == "Multistop":
+                st.session_state["bol_bundle_result"] = None
+                st.session_state["bol_bundle_error"] = None
+                skip_breakdown = _multistop_skip_breakdown(result)
+                st.session_state["bol_generation_status"] = (
+                    f"{mode} DOCX generation complete. Generated {result.generated_count}, "
+                    f"skipped {result.skipped_count} "
+                    f"(validation {skip_breakdown['validation_skipped']}, "
+                    f"excluded {skip_breakdown['excluded_in_review']}, "
+                    f"other {skip_breakdown['other_skipped']}), "
+                    f"failed {result.failed_count}."
+                )
+            else:
+                _refresh_bundles()
+                st.session_state["bol_generation_status"] = (
+                    f"{mode} DOCX generation complete. Generated {result.generated_count}, "
+                    f"skipped {result.skipped_count}, failed {result.failed_count}."
+                )
         except FileNotFoundError as exc:
             mode = st.session_state["bol_mode"]
             st.session_state["bol_docx_result"] = None
@@ -522,7 +633,11 @@ def render_bol_generator_view() -> None:
         isinstance(docx_result, StandardDocxGenerationResult)
         and docx_result.generated_count > 0
     )
-    if st.button("Generate PDF Set", disabled=generate_pdf_disabled, use_container_width=True):
+    if st.button(
+        "Generate PDF Set",
+        disabled=(not pdf_generation_mode_supported) or generate_pdf_disabled,
+        use_container_width=True,
+    ):
         try:
             mode = st.session_state["bol_mode"]
             if not isinstance(docx_result, StandardDocxGenerationResult):
@@ -548,7 +663,8 @@ def render_bol_generator_view() -> None:
             _refresh_bundles()
             st.session_state["bol_generation_status"] = f"{mode} PDF generation failed: {exc}"
 
-    if st.button("Generate All", disabled=generate_docx_disabled, use_container_width=True):
+    generate_all_disabled = (not generate_all_mode_supported) or generate_docx_disabled
+    if st.button("Generate All", disabled=generate_all_disabled, use_container_width=True):
         try:
             mode, template_path = _resolve_generation_context()
             docx_result_all = generate_standard_docx_set(
@@ -580,7 +696,12 @@ def render_bol_generator_view() -> None:
             mode = st.session_state["bol_mode"]
             st.session_state["bol_generation_status"] = f"{mode} Generate All failed: {exc}"
 
-    st.caption("DOCX and PDF generation are enabled for Standard and No Recourse modes.")
+    if pdf_generation_mode_supported:
+        st.caption("DOCX and PDF generation are enabled for Standard and No Recourse modes.")
+    else:
+        st.caption(
+            "Multistop supports DOCX generation only in this phase. PDF conversion and bundles remain unavailable."
+        )
 
     st.markdown("---")
 
@@ -597,6 +718,9 @@ def render_bol_generator_view() -> None:
             pdf_bundle_bytes = _read_file_bytes(bundle_result.pdf_bundle.file_path)
         if bundle_result.all_files_bundle:
             all_bundle_bytes = _read_file_bytes(bundle_result.all_files_bundle.file_path)
+
+    if st.session_state["bol_mode"] == "Multistop":
+        st.caption("Bundle downloads are not implemented for Multistop in this phase.")
 
     st.download_button(
         "Download DOCX Bundle",
@@ -647,10 +771,13 @@ def render_bol_generator_view() -> None:
     if isinstance(docx_result, StandardDocxGenerationResult):
         selected_mode = st.session_state["bol_mode"]
         selected_template: str | None = None
-        try:
-            selected_template = str(resolve_template_path_for_mode(selected_mode))
-        except ValueError:
-            selected_template = None
+        if selected_mode == "Multistop":
+            selected_template = str(MULTISTOP_TEMPLATE_PATH)
+        else:
+            try:
+                selected_template = str(resolve_template_path_for_mode(selected_mode))
+            except ValueError:
+                selected_template = None
 
         st.write(
             {
@@ -666,6 +793,17 @@ def render_bol_generator_view() -> None:
                 "selected_facility": st.session_state["bol_selected_facility"],
             }
         )
+
+        if selected_mode == "Multistop":
+            skip_breakdown = _multistop_skip_breakdown(docx_result)
+            st.write(
+                {
+                    "validation_skipped": skip_breakdown["validation_skipped"],
+                    "excluded_in_review": skip_breakdown["excluded_in_review"],
+                    "other_skipped": skip_breakdown["other_skipped"],
+                    "generation_failures": docx_result.failed_count,
+                }
+            )
 
         if isinstance(pdf_result, StandardPdfConversionResult):
             st.write(
