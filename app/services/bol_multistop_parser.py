@@ -34,7 +34,10 @@ REQUIRED_COLUMN_SPECS: dict[str, str] = {
     "dc_state": "DCST",
     "dc_zip": "DCZIP",
     "dc_number": "DC #",
+    "country": "COUNTRY",
+    "dept": "DEPT.",
     "target_po_number": "TGT PO #",
+    "mabd": "MABD",
     "upc": "UPC",
     "pallet_description": "PalletDescription",
     "cases": "Cases",
@@ -52,6 +55,15 @@ def _normalize_header(header: str) -> str:
     cleaned = re.sub(r"\s*#\s*", "#", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned)
     return cleaned.upper()
+
+
+def _normalize_header_for_fallback(header: str) -> str:
+    cleaned = str(header).strip().upper()
+    cleaned = re.sub(r"\s*#\s*", "#", cleaned)
+    # Tolerate minor punctuation differences (e.g., DEPT. vs DEPT, CITY, STATE, ZIP variants).
+    cleaned = re.sub(r"[.,;:/\\()\-\_]+", " ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
 
 
 def _resolve_multistop_sheet_name(file: Any) -> str:
@@ -79,18 +91,21 @@ def _resolve_multistop_sheet_name(file: Any) -> str:
 def _resolve_columns(columns: list[str]) -> dict[str, str]:
     resolved_columns = [str(col) for col in columns]
     exact_columns = {col: col for col in resolved_columns}
-    normalized_columns = {_normalize_header(col): col for col in resolved_columns}
+    normalized_columns = {_normalize_header_for_fallback(col): col for col in resolved_columns}
 
     resolved: dict[str, str] = {}
     missing: list[str] = []
 
     for logical_name, source_name in REQUIRED_COLUMN_SPECS.items():
-        resolved_name = None
+        resolved_name: str | None = None
 
+        # 1) Exact canonical workbook header match first.
         if source_name in exact_columns:
             resolved_name = exact_columns[source_name]
-        else:
-            normalized_name = _normalize_header(source_name)
+
+        # 2) Controlled normalized fallback for slight formatting/case/punctuation differences.
+        if resolved_name is None:
+            normalized_name = _normalize_header_for_fallback(source_name)
             if normalized_name in normalized_columns:
                 resolved_name = normalized_columns[normalized_name]
 
