@@ -10,10 +10,9 @@ import pandas as pd
 from app.models.bol_multistop_row import BolMultistopRow
 
 
-MULTISTOP_SHEET_NAME = "MAIN LOAD SHEET"
 MULTISTOP_SHEET_NAME_VARIANTS: tuple[str, ...] = (
-    "MAIN LOAD SHEET",
     "Load sheet",
+    "MAIN LOAD SHEET",
     "LOAD SHEET",
     "Main Load Sheet",
 )
@@ -66,29 +65,25 @@ def _normalize_header_for_fallback(header: str) -> str:
     return cleaned
 
 
-def _resolve_multistop_sheet_name(file: Any) -> str:
-    file.seek(0)
-    workbook = pd.ExcelFile(file)
-    available_sheet_names = [str(name) for name in workbook.sheet_names]
-
+def _candidate_multistop_sheet_names(available_sheet_names: list[str]) -> list[str]:
     exact_lookup = {name: name for name in available_sheet_names}
-    for candidate in MULTISTOP_SHEET_NAME_VARIANTS:
-        if candidate in exact_lookup:
-            return exact_lookup[candidate]
-
     normalized_lookup = {_normalize_header(name): name for name in available_sheet_names}
+    candidates: list[str] = []
+
     for candidate in MULTISTOP_SHEET_NAME_VARIANTS:
-        normalized_candidate = _normalize_header(candidate)
-        if normalized_candidate in normalized_lookup:
-            return normalized_lookup[normalized_candidate]
+        resolved_name = exact_lookup.get(candidate)
+        if resolved_name and resolved_name not in candidates:
+            candidates.append(resolved_name)
 
-    raise ValueError(
-        "Required worksheet was not found for Multistop parsing. "
-        f"Expected one of: {', '.join(MULTISTOP_SHEET_NAME_VARIANTS)}."
-    )
+    for candidate in MULTISTOP_SHEET_NAME_VARIANTS:
+        resolved_name = normalized_lookup.get(_normalize_header(candidate))
+        if resolved_name and resolved_name not in candidates:
+            candidates.append(resolved_name)
+
+    return candidates
 
 
-def _resolve_columns(columns: list[str]) -> dict[str, str]:
+def _resolve_columns_with_missing(columns: list[str]) -> tuple[dict[str, str], list[str]]:
     resolved_columns = [str(col) for col in columns]
     exact_columns = {col: col for col in resolved_columns}
     normalized_columns = {_normalize_header_for_fallback(col): col for col in resolved_columns}
@@ -114,10 +109,46 @@ def _resolve_columns(columns: list[str]) -> dict[str, str]:
         else:
             resolved[logical_name] = resolved_name
 
-    if missing:
+    return resolved, missing
+
+
+def _resolve_multistop_sheet_name(file: Any) -> str:
+    file.seek(0)
+    workbook = pd.ExcelFile(file)
+    available_sheet_names = [str(name) for name in workbook.sheet_names]
+    candidate_sheet_names = _candidate_multistop_sheet_names(available_sheet_names)
+
+    if not candidate_sheet_names:
         raise ValueError(
-            "Missing required columns in 'MAIN LOAD SHEET' for Multistop mode: "
+            "Required worksheet was not found for Multistop parsing. "
+            f"Expected one of: {', '.join(MULTISTOP_SHEET_NAME_VARIANTS)}."
+        )
+
+    best_sheet_name = candidate_sheet_names[0]
+    best_missing_count: int | None = None
+
+    for candidate_sheet_name in candidate_sheet_names:
+        header_df = workbook.parse(sheet_name=candidate_sheet_name, dtype=object, nrows=0)
+        _, missing = _resolve_columns_with_missing(header_df.columns.tolist())
+
+        if not missing:
+            return candidate_sheet_name
+
+        if best_missing_count is None or len(missing) < best_missing_count:
+            best_missing_count = len(missing)
+            best_sheet_name = candidate_sheet_name
+
+    return best_sheet_name
+
+
+def _resolve_columns(columns: list[str], worksheet_name: str) -> dict[str, str]:
+    resolved, missing = _resolve_columns_with_missing(columns)
+    if missing:
+        detected_headers = ", ".join(str(col) for col in columns)
+        raise ValueError(
+            f"Missing required columns in '{worksheet_name}' for Multistop mode: "
             + "; ".join(missing)
+            + f". [debug] selected worksheet='{worksheet_name}'; detected headers=[{detected_headers}]"
         )
 
     return resolved
@@ -150,17 +181,14 @@ def parse_multistop_bol_excel(file: Any) -> list[BolMultistopRow]:
     if file is None:
         raise ValueError("No file uploaded. Upload an Excel file to parse.")
 
-    try:
-        resolved_sheet_name = _resolve_multistop_sheet_name(file)
-        file.seek(0)
-        df = pd.read_excel(file, sheet_name=resolved_sheet_name, dtype=object)
-    except ValueError as exc:
-        raise
+    resolved_sheet_name = _resolve_multistop_sheet_name(file)
+    file.seek(0)
+    df = pd.read_excel(file, sheet_name=resolved_sheet_name, dtype=object)
 
     if df.empty:
-        raise ValueError("Worksheet 'MAIN LOAD SHEET' contains no rows.")
+        raise ValueError(f"Worksheet '{resolved_sheet_name}' contains no rows.")
 
-    column_map = _resolve_columns(df.columns.tolist())
+    column_map = _resolve_columns(df.columns.tolist(), worksheet_name=resolved_sheet_name)
 
     parsed_rows: list[BolMultistopRow] = []
     for index, row in df.iterrows():
@@ -206,6 +234,6 @@ def parse_multistop_bol_excel(file: Any) -> list[BolMultistopRow]:
         )
 
     if not parsed_rows:
-        raise ValueError("No non-empty data rows found in 'MAIN LOAD SHEET'.")
+        raise ValueError(f"No non-empty data rows found in '{resolved_sheet_name}'.")
 
     return parsed_rows
