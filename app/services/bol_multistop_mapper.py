@@ -174,6 +174,20 @@ def _group_key(row: BolMultistopRow) -> tuple[str, str]:
     return (row.bol_number.strip(), row.load_number.strip())
 
 
+def _optional_grouped_field_warnings(group_rows: list[BolMultistopRow]) -> list[str]:
+    warnings: list[str] = []
+    optional_fields = [
+        ("Ship Date", _first_non_empty(group_rows, "ship_date")),
+        ("Load #", _first_non_empty(group_rows, "load_number")),
+        ("KKG PO#", _first_non_empty(group_rows, "kk_po_number")),
+        ("KKG Load #", _first_non_empty(group_rows, "kk_load")),
+    ]
+    for field_name, value in optional_fields:
+        if not (value or "").strip():
+            warnings.append(f"Optional grouped field is blank: {field_name}.")
+    return warnings
+
+
 def map_multistop_rows_to_records(rows: list[BolMultistopRow]) -> list[BolMultistopRecord]:
     grouped_rows: dict[tuple[str, str], list[BolMultistopRow]] = defaultdict(list)
     for row in rows:
@@ -197,7 +211,8 @@ def map_multistop_rows_to_records(rows: list[BolMultistopRow]) -> list[BolMultis
     for group, group_rows in grouped_rows.items():
         bol_number, load_number = group
         issues: list[str] = []
-        warnings = _header_consistency_warnings(group_rows)
+        consistency_warnings = _header_consistency_warnings(group_rows)
+        optional_warnings = _optional_grouped_field_warnings(group_rows)
         validation_warnings: list[str] = []
 
         rows_sorted = sorted(
@@ -264,11 +279,7 @@ def map_multistop_rows_to_records(rows: list[BolMultistopRow]) -> list[BolMultis
         missing_required_fields: list[str] = []
         header_required = [
             ("BOL #", bol_number),
-            ("Load #", load_number),
-            ("Ship Date", _first_non_empty(group_rows, "ship_date")),
             ("Carrier", _first_non_empty(group_rows, "carrier")),
-            ("KKG PO#", _first_non_empty(group_rows, "kk_po_number")),
-            ("KKG Load #", _first_non_empty(group_rows, "kk_load")),
         ]
         for field_name, value in header_required:
             if not (value or "").strip():
@@ -352,10 +363,10 @@ def map_multistop_rows_to_records(rows: list[BolMultistopRow]) -> list[BolMultis
             status="Missing Required Data",
             selected_for_generation=True,
             missing_required_fields=missing_required_fields,
-            warnings=warnings + validation_warnings,
+            warnings=consistency_warnings + optional_warnings + validation_warnings,
             generation_skip_reason=None,
             conversion_skip_reason=None,
-            issues=list(dict.fromkeys(issues + warnings + validation_warnings)),
+            issues=list(dict.fromkeys(issues + consistency_warnings + validation_warnings)),
             is_supported=not (stop_count > MAX_SUPPORTED_STOPS or has_unsupported_stops),
         )
 
