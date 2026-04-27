@@ -11,6 +11,7 @@ import zipfile
 
 from docx import Document
 from docx.enum.table import WD_ROW_HEIGHT_RULE
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Pt, Twips
@@ -22,6 +23,7 @@ from app.services.bol_standard_docx_generator import (
     DocxGenerationNotice,
     FailedDocxRecord,
     GeneratedDocxFile,
+    NO_RECOURSE_TEMPLATE_PATH,
     STANDARD_TEMPLATE_PATH,
     SkippedDocxRecord,
     StandardDocxGenerationResult,
@@ -213,6 +215,41 @@ def _compact_row_text(row, font_points: float = 7.5) -> None:
                 run.font.size = Pt(font_points)
 
 
+def _set_cell_text(cell, value: str, *, font_points: float = 7.0, align_center: bool = True) -> None:
+    cell.text = value
+    for paragraph in cell.paragraphs:
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER if align_center else WD_ALIGN_PARAGRAPH.LEFT
+        paragraph.paragraph_format.space_before = Pt(0)
+        paragraph.paragraph_format.space_after = Pt(0)
+        paragraph.paragraph_format.line_spacing = 0.86
+        for run in paragraph.runs:
+            run.font.size = Pt(font_points)
+
+
+def _set_unique_cell_text(
+    row,
+    cell_index: int,
+    value: str,
+    *,
+    font_points: float = 7.0,
+    align_center: bool = True,
+) -> None:
+    if cell_index >= len(row.cells):
+        return
+    cell = row.cells[cell_index]
+    _set_cell_text(cell, value, font_points=font_points, align_center=align_center)
+
+
+def _clear_row_text(row) -> None:
+    seen_cells = set()
+    for cell in row.cells:
+        cell_id = id(cell._tc)
+        if cell_id in seen_cells:
+            continue
+        seen_cells.add(cell_id)
+        cell.text = ""
+
+
 def _tighten_multistop_template_rows(doc: Document) -> None:
     for table in doc.tables:
         rows = list(table.rows)
@@ -239,6 +276,135 @@ def _tighten_multistop_template_rows(doc: Document) -> None:
             if 27 <= index <= 32 and not row_text.strip():
                 _set_row_height(row, 115)
                 _compact_row_text(row, 7.0)
+
+
+def _clean_standard_individual_stop_item_area(doc: Document, stop) -> None:
+    for table in doc.tables:
+        header_idx = None
+        for idx, row in enumerate(table.rows):
+            row_text_upper = " ".join(cell.text.strip() for cell in row.cells).upper()
+            if (
+                "QTY" in row_text_upper
+                and "TYPE" in row_text_upper
+                and "PO #" in row_text_upper
+                and "ITEM DESCRIPTION" in row_text_upper
+                and "# SKIDS" in row_text_upper
+                and "WEIGHT" in row_text_upper
+            ):
+                header_idx = idx
+                break
+
+        if header_idx is None:
+            continue
+
+        item_idx = header_idx + 1
+        totals_idx = None
+        for idx in range(item_idx + 1, len(table.rows)):
+            row_text_upper = " ".join(cell.text.strip() for cell in table.rows[idx].cells).upper()
+            if "TOTALS" in row_text_upper:
+                totals_idx = idx
+                break
+
+        if item_idx >= len(table.rows) or totals_idx is None:
+            return
+
+        item_row = table.rows[item_idx]
+        _set_row_height(item_row, 500)
+        _compact_row_text(item_row, 7.0)
+        _set_unique_cell_text(item_row, 0, stop.cases, font_points=7.0)
+        _set_unique_cell_text(item_row, 1, "PLT", font_points=7.0)
+        _set_unique_cell_text(item_row, 3, stop.target_po_number, font_points=6.2)
+        _set_unique_cell_text(
+            item_row,
+            5,
+            stop.pallet_description,
+            font_points=6.6,
+            align_center=False,
+        )
+        _set_unique_cell_text(item_row, 11, stop.total_pallets, font_points=7.0)
+        _set_unique_cell_text(item_row, 14, stop.weight, font_points=7.0)
+
+        totals_row = table.rows[totals_idx]
+        _set_row_height(totals_row, 360)
+        _compact_row_text(totals_row, 7.0)
+        _set_unique_cell_text(totals_row, 0, stop.cases, font_points=7.0)
+        _set_unique_cell_text(totals_row, 5, "TOTALS", font_points=7.0)
+        _set_unique_cell_text(totals_row, 11, stop.total_pallets, font_points=7.0)
+        _set_unique_cell_text(totals_row, 14, stop.weight, font_points=7.0)
+        return
+
+
+def _clean_no_recourse_individual_stop_item_area(doc: Document, stop) -> None:
+    for table in doc.tables:
+        header_idx = None
+        for idx, row in enumerate(table.rows):
+            row_text_upper = " ".join(cell.text.strip() for cell in row.cells).upper()
+            if (
+                "PALLET QTY" in row_text_upper
+                and "TYPE" in row_text_upper
+                and "PO #" in row_text_upper
+                and "ITEM DESCRIPTION" in row_text_upper
+                and "# SKIDS" in row_text_upper
+                and "WEIGHT" in row_text_upper
+            ):
+                header_idx = idx
+                break
+
+        if header_idx is None:
+            continue
+
+        item_idx = header_idx + 1
+        totals_idx = None
+        signature_idx = None
+        for idx in range(item_idx + 1, len(table.rows)):
+            row_text_upper = " ".join(cell.text.strip() for cell in table.rows[idx].cells).upper()
+            if totals_idx is None and "TOTALS" in row_text_upper:
+                totals_idx = idx
+            if "SHIPPER SIGNATURE" in row_text_upper:
+                signature_idx = idx
+                break
+
+        if item_idx >= len(table.rows) or totals_idx is None:
+            return
+
+        item_row = table.rows[item_idx]
+        _set_row_height(item_row, 500)
+        _compact_row_text(item_row, 7.0)
+        _set_unique_cell_text(item_row, 0, stop.cases, font_points=7.0)
+        _set_unique_cell_text(item_row, 1, "PLT", font_points=7.0)
+        _set_unique_cell_text(item_row, 3, stop.target_po_number, font_points=6.2)
+        _set_unique_cell_text(
+            item_row,
+            5,
+            stop.pallet_description,
+            font_points=6.6,
+            align_center=False,
+        )
+        _set_unique_cell_text(item_row, 11, stop.total_pallets, font_points=7.0)
+        _set_unique_cell_text(item_row, 14, stop.weight, font_points=7.0)
+
+        stop_unused_at = signature_idx if signature_idx is not None else totals_idx
+        for idx in range(item_idx + 1, stop_unused_at):
+            if idx == totals_idx:
+                continue
+            row = table.rows[idx]
+            _clear_row_text(row)
+            _set_row_height(row, 1)
+            _compact_row_text(row, 1.0)
+
+        totals_row = table.rows[totals_idx]
+        _set_row_height(totals_row, 360)
+        _compact_row_text(totals_row, 7.0)
+        _set_unique_cell_text(totals_row, 0, stop.cases, font_points=7.0)
+        _set_unique_cell_text(totals_row, 5, "TOTALS", font_points=7.0)
+        _set_unique_cell_text(totals_row, 11, stop.total_pallets, font_points=7.0)
+        _set_unique_cell_text(totals_row, 14, stop.weight, font_points=7.0)
+
+        if signature_idx is not None:
+            signature_row = table.rows[signature_idx]
+            for cell_index in (11, 14):
+                _set_unique_cell_text(signature_row, cell_index, "", font_points=7.0)
+        return
 
 
 def _resolve_comment_for_record(record_comment: str, batch_comment: str | None) -> str:
@@ -463,6 +629,7 @@ def _save_individual_stop_docx(
     stop_record = _build_individual_stop_standard_record(record, stop_index)
     doc = Document(str(resolved_template))
     is_standard_template = resolved_template.name == STANDARD_TEMPLATE_PATH.name
+    is_no_recourse_template = resolved_template.name == NO_RECOURSE_TEMPLATE_PATH.name
     resolved_comment = _resolve_comment_for_record(record.comments, batch_comment)
     record_notice_messages = _apply_standard_template_record_values(
         doc,
@@ -471,6 +638,10 @@ def _save_individual_stop_docx(
         batch_comment,
         compact_standard_item_area=is_standard_template,
     )
+    if is_standard_template:
+        _clean_standard_individual_stop_item_area(doc, stop)
+    elif is_no_recourse_template:
+        _clean_no_recourse_individual_stop_item_area(doc, stop)
     for message in record_notice_messages:
         notices.append(DocxGenerationNotice(bol_number=bol_label, message=message))
 
