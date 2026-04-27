@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import mkdtemp
+from typing import Any
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from app.services.bol_standard_docx_generator import GeneratedDocxFile
@@ -71,16 +72,21 @@ def _sanitize_archive_part(value: str) -> str:
     return cleaned or "unknown"
 
 
-def _safe_archive_name(value: str) -> str:
-    path = Path(value or "generated.docx")
+def _safe_archive_name(value: str, expected_suffix: str | None = ".docx") -> str:
+    fallback_suffix = expected_suffix or ".docx"
+    path = Path(value or f"generated{fallback_suffix}")
     stem = _sanitize_archive_part(path.stem)
-    suffix = path.suffix if path.suffix.lower() == ".docx" else ".docx"
+    if expected_suffix is None:
+        suffix = path.suffix
+    else:
+        suffix = path.suffix if path.suffix.lower() == expected_suffix else expected_suffix
     return f"{stem}{suffix}"
 
 
-def _build_multistop_docx_zip(
+def _build_multistop_zip(
     zip_path: Path,
-    generated_docx_files: list[GeneratedDocxFile],
+    generated_files: list[Any],
+    expected_suffix: str | None,
 ) -> BundleArtifact:
     zip_path.parent.mkdir(parents=True, exist_ok=True)
     added_count = 0
@@ -91,7 +97,7 @@ def _build_multistop_docx_zip(
     used_archive_names: set[str] = set()
 
     with ZipFile(zip_path, "w", compression=ZIP_DEFLATED) as zip_file:
-        for generated_file in generated_docx_files:
+        for generated_file in generated_files:
             source_path = Path(generated_file.file_path)
             if not source_path.exists():
                 missing_count += 1
@@ -102,7 +108,7 @@ def _build_multistop_docx_zip(
                 str(getattr(generated_file, "load_number", "") or "")
             )
             folder_name = f"load_{load_number}_bol_{bol_number}"
-            archive_file_name = _safe_archive_name(generated_file.file_name)
+            archive_file_name = _safe_archive_name(generated_file.file_name, expected_suffix)
             archive_name = f"{folder_name}/{archive_file_name}"
 
             counter = 2
@@ -135,8 +141,9 @@ def _build_multistop_docx_zip(
     )
 
 
-def create_multistop_docx_bundle(
+def create_multistop_bundles(
     generated_docx_files: list[GeneratedDocxFile],
+    converted_pdf_files: list[ConvertedPdfFile] | None = None,
     output_dir: Path | None = None,
     bundle_name_prefix: str = "multistop_bol",
 ) -> StandardBundleResult:
@@ -147,25 +154,63 @@ def create_multistop_docx_bundle(
     if not prefix:
         prefix = "multistop_bol"
 
+    converted_pdf_files = converted_pdf_files or []
     existing_docx_files = [
         generated_file
         for generated_file in generated_docx_files
         if Path(generated_file.file_path).exists()
     ]
+    existing_pdf_files = [
+        converted_file
+        for converted_file in converted_pdf_files
+        if Path(converted_file.file_path).exists()
+    ]
     docx_bundle = (
-        _build_multistop_docx_zip(
+        _build_multistop_zip(
             output_root / f"{prefix}_docx_bundle.zip",
             generated_docx_files,
+            ".docx",
         )
         if existing_docx_files
+        else None
+    )
+    pdf_bundle = (
+        _build_multistop_zip(
+            output_root / f"{prefix}_pdf_bundle.zip",
+            converted_pdf_files,
+            ".pdf",
+        )
+        if existing_pdf_files
+        else None
+    )
+    all_files_bundle = (
+        _build_multistop_zip(
+            output_root / f"{prefix}_all_files_bundle.zip",
+            [*generated_docx_files, *converted_pdf_files],
+            None,
+        )
+        if existing_docx_files or existing_pdf_files
         else None
     )
 
     return StandardBundleResult(
         output_dir=str(output_root.resolve()),
         docx_bundle=docx_bundle,
-        pdf_bundle=None,
-        all_files_bundle=None,
+        pdf_bundle=pdf_bundle,
+        all_files_bundle=all_files_bundle,
+    )
+
+
+def create_multistop_docx_bundle(
+    generated_docx_files: list[GeneratedDocxFile],
+    output_dir: Path | None = None,
+    bundle_name_prefix: str = "multistop_bol",
+) -> StandardBundleResult:
+    return create_multistop_bundles(
+        generated_docx_files=generated_docx_files,
+        converted_pdf_files=[],
+        output_dir=output_dir,
+        bundle_name_prefix=bundle_name_prefix,
     )
 
 
