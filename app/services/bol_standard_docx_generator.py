@@ -616,20 +616,33 @@ def _populate_first_comment_label(xml_text: str, resolved_comment: str) -> tuple
         return xml_text, False
 
     safe_comment = escape(resolved_comment)
-    replacement_done = False
     label_pattern = re.compile(
         r"(<w:t(?:\s+[^>]*)?>)(COMMENTS?:)(?:\s*[^<]*)(</w:t>)",
         flags=re.IGNORECASE,
     )
+    alternate_content_pattern = re.compile(
+        r"<mc:AlternateContent\b(?:(?!</mc:AlternateContent>).)*?</mc:AlternateContent>",
+        flags=re.DOTALL,
+    )
 
     def _replace_label(match: re.Match[str]) -> str:
-        nonlocal replacement_done
-        if replacement_done:
-            return f"{match.group(1)}{match.group(2)}{match.group(3)}"
-        replacement_done = True
         return f"{match.group(1)}{match.group(2)} {safe_comment}{match.group(3)}"
 
-    return label_pattern.sub(_replace_label, xml_text), replacement_done
+    for alternate_match in alternate_content_pattern.finditer(xml_text):
+        alternate_content = alternate_match.group(0)
+        if not label_pattern.search(alternate_content):
+            continue
+
+        updated_alternate_content = label_pattern.sub(_replace_label, alternate_content)
+        return (
+            xml_text[: alternate_match.start()]
+            + updated_alternate_content
+            + xml_text[alternate_match.end() :],
+            True,
+        )
+
+    updated_xml, replacement_count = label_pattern.subn(_replace_label, xml_text, count=1)
+    return updated_xml, replacement_count > 0
 
 
 def _postprocess_comments_in_document_xml(
