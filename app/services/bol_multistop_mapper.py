@@ -51,6 +51,12 @@ def _build_city_state_zip(row: BolMultistopRow) -> str:
     return " ".join(part for part in [city_state, zip_code] if part).strip()
 
 
+def _build_delivery_address(street: str, city_state_zip: str) -> str:
+    return "\n".join(
+        part.strip() for part in [street, city_state_zip] if (part or "").strip()
+    )
+
+
 def _sum_numeric(
     rows: list[BolMultistopRow],
     attr_name: str,
@@ -117,6 +123,7 @@ def _build_stop(row: BolMultistopRow, stop_number: int) -> BolMultistopStop:
         stop_number=stop_number,
         delivery_dc=_build_delivery_dc(row.dc_name, row.dc_number),
         delivery_address=row.dc_address,
+        delivery_city_state_zip=_build_city_state_zip(row),
         dc_number=row.dc_number,
         cases=row.cases,
         target_po_number=row.target_po_number,
@@ -318,11 +325,32 @@ def map_multistop_rows_to_records(rows: list[BolMultistopRow]) -> list[BolMultis
             stop_count=stop_count,
             stops=ordered_stops,
             delivery_1_dc=ordered_stops[0].delivery_dc if len(ordered_stops) > 0 else "",
-            delivery_1_address=ordered_stops[0].delivery_address if len(ordered_stops) > 0 else "",
+            delivery_1_address=(
+                _build_delivery_address(
+                    ordered_stops[0].delivery_address,
+                    ordered_stops[0].delivery_city_state_zip,
+                )
+                if len(ordered_stops) > 0
+                else ""
+            ),
             delivery_2_dc=ordered_stops[1].delivery_dc if len(ordered_stops) > 1 else "",
-            delivery_2_address=ordered_stops[1].delivery_address if len(ordered_stops) > 1 else "",
+            delivery_2_address=(
+                _build_delivery_address(
+                    ordered_stops[1].delivery_address,
+                    ordered_stops[1].delivery_city_state_zip,
+                )
+                if len(ordered_stops) > 1
+                else ""
+            ),
             delivery_3_dc=ordered_stops[2].delivery_dc if len(ordered_stops) > 2 else "",
-            delivery_3_address=ordered_stops[2].delivery_address if len(ordered_stops) > 2 else "",
+            delivery_3_address=(
+                _build_delivery_address(
+                    ordered_stops[2].delivery_address,
+                    ordered_stops[2].delivery_city_state_zip,
+                )
+                if len(ordered_stops) > 2
+                else ""
+            ),
             dc_1=ordered_stops[0].dc_number if len(ordered_stops) > 0 else "",
             case_1=ordered_stops[0].cases if len(ordered_stops) > 0 else "",
             po_1=ordered_stops[0].target_po_number if len(ordered_stops) > 0 else "",

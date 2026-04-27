@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from tempfile import mkdtemp
@@ -9,6 +10,10 @@ from xml.sax.saxutils import escape
 import zipfile
 
 from docx import Document
+from docx.enum.table import WD_ROW_HEIGHT_RULE
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Pt, Twips
 from docx.table import Table
 
 from app.models.bol_multistop_record import BolMultistopRecord
@@ -25,6 +30,15 @@ from app.utils.bol_facilities import BolFacilityRecord
 MULTISTOP_TEMPLATE_PATH = Path("app/templates/multistop_bol_template.docx")
 LEFT_MERGE = "\u00ab"
 RIGHT_MERGE = "\u00bb"
+
+
+@dataclass(slots=True)
+class MultistopGeneratedDocxFile(GeneratedDocxFile):
+    """Generated Multistop DOCX metadata for combined and stop-level outputs."""
+
+    document_type: str
+    load_number: str
+    stop_number: int | None = None
 
 
 def _tok(name: str) -> str:
@@ -52,6 +66,16 @@ def _unique_destination_path(directory: Path, base_name: str, extension: str) ->
 
 def _format_number(value: float) -> str:
     return str(int(value)) if float(value).is_integer() else f"{value:.2f}".rstrip("0").rstrip(".")
+
+
+def _parse_number(value: str) -> float:
+    cleaned = (value or "").replace(",", "").strip()
+    if not cleaned:
+        return 0.0
+    try:
+        return float(cleaned)
+    except ValueError:
+        return 0.0
 
 
 def _format_ship_date_for_template(raw_ship_date: str) -> str:
@@ -88,6 +112,30 @@ def _format_ship_date_for_template(raw_ship_date: str) -> str:
         return normalized
 
 
+def _set_text_node_value(node, value: str) -> None:
+    if "\n" not in value:
+        node.text = value
+        return
+
+    run = node.getparent()
+    insert_at = run.index(node)
+    run.remove(node)
+
+    parts = value.split("\n")
+    for index, part in enumerate(parts):
+        if index > 0:
+            br = OxmlElement("w:br")
+            run.insert(insert_at, br)
+            insert_at += 1
+
+        text_node = OxmlElement("w:t")
+        if part.startswith(" ") or part.endswith(" "):
+            text_node.set(qn("xml:space"), "preserve")
+        text_node.text = part
+        run.insert(insert_at, text_node)
+        insert_at += 1
+
+
 def _replace_text_in_paragraph(paragraph, replacements: dict[str, str]) -> None:
     text_nodes = paragraph._p.findall(".//w:t", paragraph._p.nsmap)
     instr_nodes = paragraph._p.findall(".//w:instrText", paragraph._p.nsmap)
@@ -98,7 +146,7 @@ def _replace_text_in_paragraph(paragraph, replacements: dict[str, str]) -> None:
             if source in updated:
                 updated = updated.replace(source, target)
         if updated != text:
-            node.text = updated
+            _set_text_node_value(node, updated)
 
 
 def _replace_text_in_document(
@@ -122,7 +170,7 @@ def _replace_text_in_document(
                 if source in updated:
                     updated = updated.replace(source, target)
             if updated != text:
-                node.text = updated
+                _set_text_node_value(node, updated)
 
     for paragraph in doc.paragraphs:
         _replace_text_in_paragraph(paragraph, replacements)
@@ -143,6 +191,80 @@ def _replace_text_in_document(
         _replace_in_table_collection(section.footer.tables)
         if include_xml_tree:
             _replace_in_element_tree(section.footer._element)
+
+
+def _set_row_height(row, twips: int, *, exact: bool = True) -> None:
+    row.height = Twips(twips)
+    row.height_rule = WD_ROW_HEIGHT_RULE.EXACTLY if exact else WD_ROW_HEIGHT_RULE.AT_LEAST
+
+
+def _compact_row_text(row, font_points: float = 7.5) -> None:
+    for cell in row.cells:
+        cell.vertical_alignment = None
+        for paragraph in cell.paragraphs:
+            paragraph.paragraph_format.space_before = Pt(0)
+            paragraph.paragraph_format.space_after = Pt(0)
+            paragraph.paragraph_format.line_spacing = 0.86
+            for run in paragraph.runs:
+                run.font.size = Pt(font_points)
+
+
+def _tighten_multistop_template_rows(doc: Document) -> None:
+    for table in doc.tables:
+        rows = list(table.rows)
+        for index, row in enumerate(rows):
+            row_text = " ".join(cell.text for cell in row.cells)
+
+            if any(token in row_text for token in ("DELIVERY_1_DC", "DELIVERY_2_DC", "DELIVERY_3_DC")):
+                _set_row_height(row, 285)
+                _compact_row_text(row, 7.5)
+            elif any(
+                token in row_text
+                for token in (
+                    "DELIVERY_1_ADDRESS",
+                    "DELIVERY_2_ADDRESS",
+                    "DELIVERY_3_ADDRESS",
+                )
+            ):
+                _set_row_height(row, 365)
+                _compact_row_text(row, 7.0)
+            elif any(token in row_text for token in ("DC_1", "DC_2", "DC_3")):
+                _set_row_height(row, 330)
+                _compact_row_text(row, 7.0)
+
+            if 27 <= index <= 32 and not row_text.strip():
+                _set_row_height(row, 115)
+                _compact_row_text(row, 7.0)
+
+
+def _clear_row_text(row, max_cell_index: int | None = None) -> None:
+    seen_cells = set()
+    for index, cell in enumerate(row.cells):
+        if max_cell_index is not None and index > max_cell_index:
+            continue
+        cell_id = id(cell._tc)
+        if cell_id in seen_cells:
+            continue
+        seen_cells.add(cell_id)
+        cell.text = ""
+
+
+def _suppress_individual_stop_unused_rows(doc: Document) -> None:
+    for table in doc.tables:
+        rows = list(table.rows)
+        for index in (16, 17, 18, 19):
+            if index >= len(rows):
+                continue
+            _clear_row_text(rows[index], max_cell_index=7)
+            if index in {18, 19}:
+                _set_row_height(rows[index], 1)
+                _compact_row_text(rows[index], 1.0)
+
+        for index in (25, 26):
+            if index < len(rows):
+                _clear_row_text(rows[index])
+                _set_row_height(rows[index], 1)
+                _compact_row_text(rows[index], 1.0)
 
 
 def _resolve_comment_for_record(record_comment: str, batch_comment: str | None) -> str:
@@ -258,6 +380,102 @@ def _template_replacements(record: BolMultistopRecord) -> dict[str, str]:
     return replacements
 
 
+def _individual_stop_replacements(
+    record: BolMultistopRecord,
+    stop_index: int,
+) -> dict[str, str]:
+    stop = record.stops[stop_index]
+    replacements = _template_replacements(record)
+
+    replacements.update(
+        {
+            _tok("DELIVERY_1_DC"): stop.delivery_dc,
+            _tok("DELIVERY_1_ADDRESS"): stop.delivery_address,
+            _tok("DELIVERY_2_DC"): "",
+            _tok("DELIVERY_2_ADDRESS"): "",
+            _tok("DELIVERY_3_DC"): "",
+            _tok("DELIVERY_3_ADDRESS"): "",
+            _tok("DC_1"): stop.dc_number,
+            _tok("CASE_1"): stop.cases,
+            _tok("PO_1"): stop.target_po_number,
+            _tok("Pallet_Description_1"): stop.pallet_description,
+            _tok("PLT_1"): stop.total_pallets,
+            _tok("WEIGHT_1"): stop.weight,
+            _tok("DC_2"): "",
+            _tok("CASE_2"): "",
+            _tok("PO_2"): "",
+            _tok("Pallet_Description_2"): "",
+            _tok("PLT_2"): "",
+            _tok("WEIGHT_2"): "",
+            _tok("DC_3"): "",
+            _tok("CASE_3"): "",
+            _tok("PO_3"): "",
+            _tok("Pallet_Description_3"): "",
+            _tok("PLT_3"): "",
+            _tok("WEIGHT_3"): "",
+            _tok("Total_Case"): _format_number(_parse_number(stop.cases)),
+            _tok("Total_Pallet"): _format_number(_parse_number(stop.total_pallets)),
+            _tok("Total_Ship_Weight"): _format_number(_parse_number(stop.weight)),
+        }
+    )
+    return replacements
+
+
+def _save_multistop_docx(
+    *,
+    record: BolMultistopRecord,
+    bol_label: str,
+    selected_facility: BolFacilityRecord,
+    batch_comment: str | None,
+    resolved_template: Path,
+    output_root: Path,
+    base_name: str,
+    replacements: dict[str, str],
+    document_type: str,
+    stop_number: int | None,
+    notices: list[DocxGenerationNotice],
+) -> MultistopGeneratedDocxFile:
+    doc = Document(str(resolved_template))
+    _tighten_multistop_template_rows(doc)
+    _replace_text_in_document(doc, replacements, include_xml_tree=True)
+    if document_type == "stop":
+        _suppress_individual_stop_unused_rows(doc)
+    ship_from_populated = _populate_ship_from_block(doc, selected_facility)
+    if not ship_from_populated:
+        notices.append(
+            DocxGenerationNotice(
+                bol_number=bol_label,
+                message="Could not confirm ship-from block location in template.",
+            )
+        )
+
+    destination = _unique_destination_path(output_root, base_name, ".docx")
+    filename = destination.name
+    doc.save(str(destination))
+
+    resolved_comment = _resolve_comment_for_record(record.comments, batch_comment)
+    comment_label_populated = _postprocess_comments_in_saved_docx(destination, resolved_comment)
+    if resolved_comment and not comment_label_populated:
+        notices.append(
+            DocxGenerationNotice(
+                bol_number=bol_label,
+                message=(
+                    "Resolved comment was non-empty but could not be confirmed "
+                    "at the visible Comments label in word/document.xml."
+                ),
+            )
+        )
+
+    return MultistopGeneratedDocxFile(
+        bol_number=bol_label,
+        file_name=filename,
+        file_path=str(destination.resolve()),
+        document_type=document_type,
+        load_number=record.load_number,
+        stop_number=stop_number,
+    )
+
+
 def generate_multistop_docx_set(
     records: list[BolMultistopRecord],
     selected_facility: BolFacilityRecord | None,
@@ -312,48 +530,43 @@ def generate_multistop_docx_set(
             continue
 
         try:
-            doc = Document(str(resolved_template))
-            replacements = _template_replacements(record)
-            _replace_text_in_document(doc, replacements, include_xml_tree=True)
-            ship_from_populated = _populate_ship_from_block(doc, selected_facility)
-            if not ship_from_populated:
-                notices.append(
-                    DocxGenerationNotice(
-                        bol_number=bol_label,
-                        message="Could not confirm ship-from block location in template.",
-                    )
-                )
-
             safe_bol = _sanitize_filename_part(record.bol_number)
             safe_load = _sanitize_filename_part(record.load_number)
-            destination = _unique_destination_path(
-                output_root, f"{file_name_prefix}_{safe_bol}_{safe_load}", ".docx"
-            )
-            filename = destination.name
-            doc.save(str(destination))
-
-            resolved_comment = _resolve_comment_for_record(record.comments, batch_comment)
-            comment_label_populated = _postprocess_comments_in_saved_docx(
-                destination, resolved_comment
-            )
-            if resolved_comment and not comment_label_populated:
-                notices.append(
-                    DocxGenerationNotice(
-                        bol_number=bol_label,
-                        message=(
-                            "Resolved comment was non-empty but could not be confirmed "
-                            "at the visible Comments label in word/document.xml."
-                        ),
-                    )
-                )
+            combined_base_name = f"combined_multistop_bol_{safe_bol}_{safe_load}"
 
             generated.append(
-                GeneratedDocxFile(
-                    bol_number=bol_label,
-                    file_name=filename,
-                    file_path=str(destination.resolve()),
+                _save_multistop_docx(
+                    record=record,
+                    bol_label=bol_label,
+                    selected_facility=selected_facility,
+                    batch_comment=batch_comment,
+                    resolved_template=resolved_template,
+                    output_root=output_root,
+                    base_name=combined_base_name,
+                    replacements=_template_replacements(record),
+                    document_type="combined",
+                    stop_number=None,
+                    notices=notices,
                 )
             )
+
+            for stop_index, stop in enumerate(record.stops):
+                stop_base_name = f"stop_{stop.stop_number}_bol_{safe_bol}_{safe_load}"
+                generated.append(
+                    _save_multistop_docx(
+                        record=record,
+                        bol_label=bol_label,
+                        selected_facility=selected_facility,
+                        batch_comment=batch_comment,
+                        resolved_template=resolved_template,
+                        output_root=output_root,
+                        base_name=stop_base_name,
+                        replacements=_individual_stop_replacements(record, stop_index),
+                        document_type="stop",
+                        stop_number=stop.stop_number,
+                        notices=notices,
+                    )
+                )
         except Exception as exc:
             failed.append(FailedDocxRecord(bol_number=bol_label, error=str(exc)))
 
@@ -367,4 +580,3 @@ def generate_multistop_docx_set(
         failed_records=failed,
         notices=notices,
     )
-

@@ -15,6 +15,7 @@ class BolMultistopStop:
     stop_number: int
     delivery_dc: str
     delivery_address: str
+    delivery_city_state_zip: str
     dc_number: str
     cases: str
     target_po_number: str
