@@ -51,11 +51,11 @@ def _resolve_columns(columns: list[str], require_quantity: bool = False) -> dict
             if logical_name in REQUIRED_LOGICAL_COLUMNS:
                 missing.append(expected_headers[0])
 
-    if require_quantity and "quantity" not in resolved:
-        missing.append("Quantity/Qty (required for Auto Qty from Excel)")
-
     if missing:
         raise ValueError("Missing required columns: " + ", ".join(missing))
+
+    if require_quantity and "quantity" not in resolved:
+        raise ValueError("Auto Qty requires a Quantity/Qty column in the Albertsons Excel file.")
 
     return resolved
 
