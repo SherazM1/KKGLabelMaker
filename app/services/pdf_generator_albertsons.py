@@ -28,7 +28,17 @@ def _draw_divider(c: canvas.Canvas, y: float) -> None:
     c.line(LEFT_MARGIN, y, PAGE_WIDTH - RIGHT_MARGIN, y)
 
 
-def _draw_label_page(c: canvas.Canvas, label: AlbertsonsLabel) -> None:
+def _draw_label_page(
+    c: canvas.Canvas,
+    label: AlbertsonsLabel,
+    manual_item_number: str = "",
+    manual_qty: str = "",
+    manual_po_type: str = "",
+) -> None:
+    item_number = manual_item_number.strip() or label.item_number
+    quantity = manual_qty.strip() or label.quantity
+    po_type = manual_po_type.strip() or label.carton_number
+
     c.setFillColorRGB(0, 0, 0)
 
     c.setFont("Helvetica-Bold", 30)
@@ -76,7 +86,7 @@ def _draw_label_page(c: canvas.Canvas, label: AlbertsonsLabel) -> None:
     c.setFont("Helvetica-Bold", ORDER_LABEL_FONT_SIZE)
     c.drawString(ORDER_LABEL_X, order_top_y - 22, "ITEM#")
     c.setFont("Helvetica", ORDER_VALUE_FONT_SIZE)
-    c.drawString(ORDER_ITEM_VALUE_X, order_top_y - 22, sanitize_text(label.item_number))
+    c.drawString(ORDER_ITEM_VALUE_X, order_top_y - 22, sanitize_text(item_number))
 
     c.setFont("Helvetica-Bold", ORDER_LABEL_FONT_SIZE)
     c.drawString(ORDER_LABEL_X, order_top_y - 44, "DESC")
@@ -84,7 +94,7 @@ def _draw_label_page(c: canvas.Canvas, label: AlbertsonsLabel) -> None:
     c.drawString(ORDER_DESC_VALUE_X, order_top_y - 44, sanitize_text(label.description))
 
     c.setFont("Helvetica-Bold", 15)
-    c.drawRightString(PAGE_WIDTH - RIGHT_MARGIN, order_top_y - 22, f"Qty {sanitize_text(label.quantity)}")
+    c.drawRightString(PAGE_WIDTH - RIGHT_MARGIN, order_top_y - 22, f"Qty {sanitize_text(quantity)}")
 
     divider_two_y = order_top_y - 64
     _draw_divider(c, divider_two_y)
@@ -95,13 +105,18 @@ def _draw_label_page(c: canvas.Canvas, label: AlbertsonsLabel) -> None:
     c.setFont("Helvetica-Bold", 38)
     c.drawCentredString(PAGE_WIDTH / 2, center_y - 52, sanitize_text(label.dc_value))
     c.setFont("Helvetica-Bold", 40)
-    c.drawCentredString(PAGE_WIDTH / 2, center_y - 106, sanitize_text(label.carton_number))
+    c.drawCentredString(PAGE_WIDTH / 2, center_y - 106, sanitize_text(po_type))
 
     c.setFont("Helvetica-Bold", 42)
     c.drawCentredString(PAGE_WIDTH / 2, 56, "DO NOT DESTROY")
 
 
-def generate_albertsons_pdf(labels: list[AlbertsonsLabel]) -> bytes:
+def generate_albertsons_pdf(
+    labels: list[AlbertsonsLabel],
+    manual_item_number: str = "",
+    manual_qty: str = "",
+    manual_po_type: str = "",
+) -> bytes:
     if not labels:
         raise ValueError("No labels provided for PDF generation.")
 
@@ -109,7 +124,7 @@ def generate_albertsons_pdf(labels: list[AlbertsonsLabel]) -> bytes:
     c = canvas.Canvas(buffer, pagesize=letter)
 
     for label in labels:
-        _draw_label_page(c, label)
+        _draw_label_page(c, label, manual_item_number, manual_qty, manual_po_type)
         c.showPage()
 
     c.save()

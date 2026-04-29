@@ -233,8 +233,26 @@ def render_albertsons_mode() -> None:
         labels = read_excel_albertsons(uploaded_file)
         st.success(f"Parsed {len(labels)} label rows.")
 
+        manual_item_number = st.text_input(
+            "Item #",
+            key="albertsons_manual_item_number",
+        )
+        manual_qty = st.text_input(
+            "Qty",
+            key="albertsons_manual_qty",
+        )
+        manual_po_type = st.text_input(
+            "PO Type",
+            key="albertsons_manual_po_type",
+        )
+
         if st.button("Generate Albertsons PDF", type="primary", key="generate_albertsons_pdf"):
-            pdf_bytes = generate_albertsons_pdf(labels)
+            pdf_bytes = generate_albertsons_pdf(
+                labels,
+                manual_item_number=manual_item_number,
+                manual_qty=manual_qty,
+                manual_po_type=manual_po_type,
+            )
             st.download_button(
                 label="Download Albertsons Labels",
                 data=pdf_bytes,
