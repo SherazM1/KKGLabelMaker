@@ -19,3 +19,4 @@ class AlbertsonsLabel:
     dc_label: str
     dc_value: str
     carton_number: str
+    upc: str = ""

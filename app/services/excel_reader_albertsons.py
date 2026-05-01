@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import pandas as pd
@@ -17,6 +18,7 @@ COLUMN_MAP = {
     "ship_to_zip": ["Buying Party Zip"],
     "po_number": ["Purchase Order Number"],
     "item_number": ["Item #"],
+    "upc": ["UPC #", "UPC#", "UPC", "Upc", "upc #", "upc"],
     "description": ["Description"],
     "quantity": ["Quantity", "Qty", "QTY", "Qty."],
 }
@@ -36,7 +38,11 @@ def _normalize_header(header: str) -> str:
     return "".join(char for char in header.strip().lower() if char.isalnum())
 
 
-def _resolve_columns(columns: list[str], require_quantity: bool = False) -> dict[str, str]:
+def _resolve_columns(
+    columns: list[str],
+    require_quantity: bool = False,
+    require_upc: bool = False,
+) -> dict[str, str]:
     normalized_to_actual = {_normalize_header(col): col for col in columns}
     resolved: dict[str, str] = {}
     missing: list[str] = []
@@ -57,6 +63,11 @@ def _resolve_columns(columns: list[str], require_quantity: bool = False) -> dict
     if require_quantity and "quantity" not in resolved:
         raise ValueError("Auto Qty requires a Quantity/Qty column in the Albertsons Excel file.")
 
+    if require_upc and "upc" not in resolved:
+        raise ValueError(
+            "UPC # from Excel mode requires a UPC # column in the Albertsons Excel file."
+        )
+
     return resolved
 
 
@@ -66,13 +77,40 @@ def _coerce_to_string(value: Any) -> str:
     return str(value).strip()
 
 
-def read_excel_albertsons(file: Any, require_quantity: bool = False) -> list[AlbertsonsLabel]:
+def _normalize_upc(value: Any) -> str:
+    text = _coerce_to_string(value)
+    if not text:
+        return ""
+
+    if "e" in text.lower():
+        try:
+            decimal_value = Decimal(text)
+        except InvalidOperation:
+            return text
+        normalized = format(decimal_value, "f")
+        return normalized[:-2] if normalized.endswith(".0") else normalized
+
+    if text.endswith(".0"):
+        return text[:-2]
+
+    return text
+
+
+def read_excel_albertsons(
+    file: Any,
+    require_quantity: bool = False,
+    require_upc: bool = False,
+) -> list[AlbertsonsLabel]:
     df = pd.read_excel(file, dtype=str)
 
     if df.empty:
         raise ValueError("Excel file contains no rows.")
 
-    column_map = _resolve_columns(df.columns.tolist(), require_quantity=require_quantity)
+    column_map = _resolve_columns(
+        df.columns.tolist(),
+        require_quantity=require_quantity,
+        require_upc=require_upc,
+    )
     labels: list[AlbertsonsLabel] = []
 
     for index, row in df.iterrows():
@@ -89,6 +127,7 @@ def read_excel_albertsons(file: Any, require_quantity: bool = False) -> list[Alb
             if "item_number" in column_map
             else ""
         )
+        upc = _normalize_upc(row[column_map["upc"]]) if "upc" in column_map else ""
         description = _coerce_to_string(row[column_map["description"]])
         quantity = (
             _coerce_to_string(row[column_map["quantity"]])
@@ -105,6 +144,7 @@ def read_excel_albertsons(file: Any, require_quantity: bool = False) -> list[Alb
                 ship_to_zip,
                 po_number,
                 item_number,
+                upc,
                 description,
                 quantity,
             ]
@@ -126,6 +166,7 @@ def read_excel_albertsons(file: Any, require_quantity: bool = False) -> list[Alb
                 ship_to_zip=ship_to_zip,
                 po_number=po_number,
                 item_number=item_number,
+                upc=upc,
                 description=description,
                 quantity=quantity,
                 dc_label="DC#",

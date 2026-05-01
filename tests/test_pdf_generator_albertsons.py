@@ -85,6 +85,19 @@ def test_albertsons_auto_qty_uses_label_quantity() -> None:
     assert "Qty 12" in canvas.strings
 
 
+def test_albertsons_upc_identifier_uses_label_upc() -> None:
+    canvas = RecordingCanvas()
+    label = _label()
+    label.upc = "3980000000"
+
+    _draw_label_page(canvas, label, manual_item_number="MANUAL-ITEM", identifier_mode="upc")
+
+    assert "UPC#" in canvas.strings
+    assert "3980000000" in canvas.strings
+    assert "ITEM#" not in canvas.strings
+    assert "MANUAL-ITEM" not in canvas.strings
+
+
 def test_albertsons_blank_manual_values_preserve_non_qty_defaults() -> None:
     canvas = RecordingCanvas()
 
