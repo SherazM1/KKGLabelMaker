@@ -377,11 +377,8 @@ def render_home() -> None:
     if st.button("SKID Tags (Coming Soon)", disabled=True, use_container_width=True):
         st.session_state["page"] = "skid_tags"
 
-    st.markdown("---")
-
-    st.subheader("Coming Soon")
-
-    st.button("Inventory (Coming Soon)", disabled=True, use_container_width=True)
+    if st.button("Truck Inventory (Coming Soon)", disabled=True, use_container_width=True):
+        st.session_state["page"] = "inventory"
 
 
 def render_label_maker() -> None:
