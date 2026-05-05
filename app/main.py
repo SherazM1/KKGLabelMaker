@@ -8,9 +8,14 @@ import streamlit as st
 
 from app.services.excel_reader import read_excel
 from app.services.excel_reader_albertsons import read_excel_albertsons
+from app.services.excel_reader_andersons import (
+    ANDERSONS_SHIP_FROM_OPTIONS,
+    read_excel_andersons,
+)
 from app.services.excel_reader_sams import read_excel_sams
 from app.services.excel_reader_sams_gci import read_excel_sams_gci
 from app.services.pdf_generator_albertsons import generate_albertsons_pdf
+from app.services.pdf_generator_andersons import generate_andersons_pdf
 from app.services.pdf_generator import generate_label_pdf
 from app.services.pdf_generator_sams import generate_sams_pdf
 from app.services.pdf_generator_sams_gci import generate_sams_gci_pdf
@@ -115,19 +120,23 @@ def render_mode_selector() -> str | None:
     if "label_mode" not in st.session_state:
         st.session_state["label_mode"] = None
 
-    left_col, middle_col, right_col = st.columns(3)
+    left_col, middle_left_col, middle_right_col, right_col = st.columns(4)
 
     with left_col:
         if st.button("EOTF Labels", use_container_width=True):
             st.session_state["label_mode"] = "eotf"
 
-    with middle_col:
+    with middle_left_col:
         if st.button("Sam's Warehouse Labels", use_container_width=True):
             st.session_state["label_mode"] = "sams"
 
-    with right_col:
+    with middle_right_col:
         if st.button("Albertsons Carton Labels", use_container_width=True):
             st.session_state["label_mode"] = "albertsons"
+
+    with right_col:
+        if st.button("Andersons Labels", use_container_width=True):
+            st.session_state["label_mode"] = "andersons"
 
     return st.session_state["label_mode"]
 
@@ -344,6 +353,57 @@ def render_albertsons_mode() -> None:
         st.error(f"Unexpected error: {exc}")
 
 
+def render_andersons_mode() -> None:
+    try:
+        st.title("Andersons Label Generator")
+        st.write("Upload Andersons Excel to generate one label per parsed row.")
+
+        uploaded_file = st.file_uploader(
+            "Upload Excel input",
+            type=["xlsx", "xlsm", "xls"],
+            key="andersons_file_uploader",
+        )
+
+        ship_from_name = st.selectbox(
+            "Ship From",
+            options=list(ANDERSONS_SHIP_FROM_OPTIONS.keys()),
+            key="andersons_ship_from_selector",
+        )
+        ship_from = ANDERSONS_SHIP_FROM_OPTIONS[ship_from_name]
+
+        st.markdown(
+            "  \n".join(
+                (
+                    f"**C/O:** {ship_from['care_of']}",
+                    ship_from["address"],
+                    f"{ship_from['city']}, {ship_from['state']} {ship_from['zip_code']}",
+                )
+            )
+        )
+
+        if uploaded_file is None:
+            st.info("Upload an Excel file to begin.")
+            return
+
+        labels = read_excel_andersons(uploaded_file)
+        st.success(f"Parsed {len(labels)} Andersons label rows.")
+
+        if st.button("Generate Andersons PDF", type="primary", key="generate_andersons_pdf"):
+            pdf_bytes = generate_andersons_pdf(labels, ship_from)
+            st.download_button(
+                label="Download Andersons Labels PDF",
+                data=pdf_bytes,
+                file_name="andersons_labels.pdf",
+                mime="application/pdf",
+                key="download_andersons_pdf",
+            )
+
+    except ValueError as exc:
+        st.error(f"Validation error: {exc}")
+    except Exception as exc:
+        st.error(f"Unexpected error: {exc}")
+
+
 def render_home() -> None:
     logo_candidates = (
         Path.cwd() / "assets" / "KKG-Logo-02.png",
@@ -400,6 +460,8 @@ def render_label_maker() -> None:
         render_sams_mode()
     elif st.session_state["label_mode"] == "albertsons":
         render_albertsons_mode()
+    elif st.session_state["label_mode"] == "andersons":
+        render_andersons_mode()
     else:
         st.info("Select a label mode to begin.")
 
