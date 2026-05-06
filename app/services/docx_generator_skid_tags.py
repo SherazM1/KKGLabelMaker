@@ -22,16 +22,12 @@ def _add_paragraph(document: Document, text: str = "", *, centered: bool = False
 
 def _add_tag_page(document: Document, tag: SkidTag) -> None:
     _add_paragraph(document, f"DC {tag.dc}")
-    _add_paragraph(document)
     _add_paragraph(document, f"PO {tag.po_display}")
     _add_paragraph(document)
+    _add_paragraph(document, f"   UPC  {tag.upc}")
     _add_paragraph(document)
-    _add_paragraph(document, f"UPC  {tag.upc}", centered=True)
-    _add_paragraph(document)
-    _add_paragraph(document)
-    _add_paragraph(document, tag.pallet_display, centered=True)
-    _add_paragraph(document)
-    _add_paragraph(document, f"Qty: {tag.quantity}")
+    _add_paragraph(document, f"     {tag.pallet_display}")
+    _add_paragraph(document, f"Qty: {tag.quantity}", centered=True)
 
 
 def generate_skid_tags_docx(tags: list[SkidTag]) -> bytes:

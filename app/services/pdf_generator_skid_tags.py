@@ -20,19 +20,19 @@ def _draw_tag_page(pdf: canvas.Canvas, tag: SkidTag) -> None:
     pdf.setFont(FONT_NAME, FONT_SIZE)
 
     y = PAGE_HEIGHT - 92
-    pdf.drawString(LEFT_MARGIN, y, f"DC {tag.dc}")
+    pdf.drawCentredString(PAGE_WIDTH / 2, y, f"DC {tag.dc}")
+
+    y -= 24
+    pdf.drawCentredString(PAGE_WIDTH / 2, y, f"PO {tag.po_display}")
 
     y -= 48
-    pdf.drawString(LEFT_MARGIN, y, f"PO {tag.po_display}")
-
-    y -= 96
-    pdf.drawCentredString(PAGE_WIDTH / 2, y, f"UPC  {tag.upc}")
-
-    y -= 96
-    pdf.drawCentredString(PAGE_WIDTH / 2, y, tag.pallet_display)
+    pdf.drawString(LEFT_MARGIN + 220, y, f"UPC  {tag.upc}")
 
     y -= 48
-    pdf.drawString(LEFT_MARGIN, y, f"Qty: {tag.quantity}")
+    pdf.drawString(LEFT_MARGIN + 240, y, tag.pallet_display)
+
+    y -= 24
+    pdf.drawCentredString(PAGE_WIDTH / 2, y, f"Qty: {tag.quantity}")
 
 
 def generate_skid_tags_pdf(tags: list[SkidTag]) -> bytes:

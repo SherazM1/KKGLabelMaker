@@ -494,6 +494,12 @@ def render_skid_tags() -> None:
         st.info("Upload an Excel file to begin.")
         return
 
+    file_signature = (uploaded_file.name, uploaded_file.size)
+    if st.session_state.get("skid_tags_file_signature") != file_signature:
+        st.session_state["skid_tags_file_signature"] = file_signature
+        st.session_state.pop("skid_tags_docx_bytes", None)
+        st.session_state.pop("skid_tags_pdf_bytes", None)
+
     try:
         tags = read_excel_skid_tags(uploaded_file)
     except ValueError as exc:
