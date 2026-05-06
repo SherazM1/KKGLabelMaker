@@ -21,6 +21,10 @@ from app.services.bol_file_bundle_service import (
     create_multistop_bundles,
     create_standard_bundles,
 )
+from app.services.bol_doc_upload_parser import (
+    BolDocUploadParseResult,
+    parse_bol_doc_upload,
+)
 from app.services.bol_standard_docx_generator import (
     StandardDocxGenerationResult,
     generate_standard_docx_set,
@@ -48,6 +52,12 @@ def _initialize_bol_state() -> None:
         st.session_state["bol_mode"] = "Standard"
     if "bol_uploaded_filename" not in st.session_state:
         st.session_state["bol_uploaded_filename"] = None
+    if "bol_uploaded_doc_filename" not in st.session_state:
+        st.session_state["bol_uploaded_doc_filename"] = None
+    if "bol_doc_upload_parse_result" not in st.session_state:
+        st.session_state["bol_doc_upload_parse_result"] = None
+    if "bol_input_source" not in st.session_state:
+        st.session_state["bol_input_source"] = "Excel upload"
     if "bol_parse_requested" not in st.session_state:
         st.session_state["bol_parse_requested"] = False
     if "bol_parse_error" not in st.session_state:
@@ -100,6 +110,19 @@ def _clear_review_state() -> None:
     st.session_state["bol_bundle_error"] = None
     st.session_state["bol_all_files_bundle_requested"] = False
     st.session_state["bol_generation_status"] = "Waiting for generation action."
+
+
+def _clear_input_state() -> None:
+    st.session_state["bol_uploaded_filename"] = None
+    st.session_state["bol_uploaded_doc_filename"] = None
+    st.session_state["bol_doc_upload_parse_result"] = None
+    st.session_state["bol_parse_requested"] = False
+    st.session_state["bol_parse_error"] = None
+    st.session_state["bol_parsed_rows"] = []
+    st.session_state["bol_grouped_records"] = []
+    st.session_state["bol_batch_comment"] = ""
+    st.session_state["bol_batch_comment_textarea"] = ""
+    _clear_review_state()
 
 
 def _refresh_bundles() -> StandardBundleResult | None:
@@ -444,6 +467,8 @@ def render_bol_generator_view() -> None:
         key="bol_mode_radio",
         index=["Standard", "No Recourse", "Multistop"].index(st.session_state["bol_mode"]),
     )
+    if st.session_state["bol_mode"] == "Multistop":
+        st.session_state["bol_input_source"] = "Excel upload"
 
     st.markdown("---")
 
@@ -468,68 +493,121 @@ def render_bol_generator_view() -> None:
 
     st.markdown("---")
 
-    st.subheader("Upload Excel")
-    st.caption("Accepted file types: .xlsx, .xlsm, .xls")
-    uploaded_file = st.file_uploader(
-        "Upload Excel input",
-        type=["xlsx", "xlsm", "xls"],
-        key="bol_excel_uploader",
-    )
-
-    previous_filename = st.session_state["bol_uploaded_filename"]
-    if uploaded_file is None:
-        st.info("No Excel file uploaded yet.")
-        st.session_state["bol_uploaded_filename"] = None
-        st.session_state["bol_parsed_rows"] = []
-        st.session_state["bol_grouped_records"] = []
-        st.session_state["bol_batch_comment"] = ""
-        st.session_state["bol_batch_comment_textarea"] = ""
-        _set_selected_facility(None)
-        _clear_review_state()
-        st.session_state["bol_parse_error"] = None
-        st.session_state["bol_parse_requested"] = False
+    st.subheader("Input")
+    input_source = st.session_state.get("bol_input_source", "Excel upload")
+    if st.session_state["bol_mode"] in ("Standard", "No Recourse"):
+        input_source = st.selectbox(
+            "Input source",
+            options=["Excel upload", "Doc upload"],
+            index=["Excel upload", "Doc upload"].index(input_source),
+            key="bol_input_source",
+            on_change=_clear_input_state,
+        )
     else:
-        st.session_state["bol_uploaded_filename"] = uploaded_file.name
-        st.success(f"Uploaded file: {uploaded_file.name}")
-        if previous_filename != uploaded_file.name:
+        input_source = "Excel upload"
+        st.caption("Multistop BOLs use Excel upload.")
+
+    uploaded_file = None
+    uploaded_doc_file = None
+
+    if input_source == "Doc upload":
+        st.caption("Accepted file type: .docx")
+        uploaded_doc_file = st.file_uploader(
+            "Doc upload",
+            type=["docx"],
+            key="bol_doc_uploader",
+        )
+
+        previous_doc_filename = st.session_state["bol_uploaded_doc_filename"]
+        if uploaded_doc_file is None:
+            st.info("No DOCX file uploaded yet.")
+            st.session_state["bol_uploaded_doc_filename"] = None
+            _set_selected_facility(None)
+            if previous_doc_filename is not None:
+                _clear_input_state()
+        else:
+            st.session_state["bol_uploaded_doc_filename"] = uploaded_doc_file.name
+            st.success(f"Uploaded file: {uploaded_doc_file.name}")
+            if previous_doc_filename != uploaded_doc_file.name:
+                _clear_input_state()
+                st.session_state["bol_uploaded_doc_filename"] = uploaded_doc_file.name
+    else:
+        st.caption("Accepted file types: .xlsx, .xlsm, .xls")
+        uploaded_file = st.file_uploader(
+            "Upload Excel input",
+            type=["xlsx", "xlsm", "xls"],
+            key="bol_excel_uploader",
+        )
+
+        previous_filename = st.session_state["bol_uploaded_filename"]
+        if uploaded_file is None:
+            st.info("No Excel file uploaded yet.")
+            st.session_state["bol_uploaded_filename"] = None
+            st.session_state["bol_doc_upload_parse_result"] = None
             st.session_state["bol_parsed_rows"] = []
             st.session_state["bol_grouped_records"] = []
             st.session_state["bol_batch_comment"] = ""
             st.session_state["bol_batch_comment_textarea"] = ""
-            default_facility_label = BOL_FACILITY_OPTIONS[0] if BOL_FACILITY_OPTIONS else None
-            _set_selected_facility(default_facility_label)
+            _set_selected_facility(None)
             _clear_review_state()
             st.session_state["bol_parse_error"] = None
             st.session_state["bol_parse_requested"] = False
+        else:
+            st.session_state["bol_uploaded_filename"] = uploaded_file.name
+            st.success(f"Uploaded file: {uploaded_file.name}")
+            if previous_filename != uploaded_file.name:
+                st.session_state["bol_parsed_rows"] = []
+                st.session_state["bol_grouped_records"] = []
+                st.session_state["bol_doc_upload_parse_result"] = None
+                st.session_state["bol_batch_comment"] = ""
+                st.session_state["bol_batch_comment_textarea"] = ""
+                default_facility_label = BOL_FACILITY_OPTIONS[0] if BOL_FACILITY_OPTIONS else None
+                _set_selected_facility(default_facility_label)
+                _clear_review_state()
+                st.session_state["bol_parse_error"] = None
+                st.session_state["bol_parse_requested"] = False
 
     st.markdown("---")
 
     st.subheader("Facility Selection")
-    st.caption("Choose one ship-from facility for the current uploaded batch.")
+    if input_source == "Doc upload":
+        st.caption("DOCX uploads use the Origin fields from the Shipment Request Form.")
 
-    if uploaded_file is None:
-        st.info("Upload an Excel file to select a facility for this batch.")
-    else:
-        current_label = st.session_state.get("bol_selected_facility_label")
-        if current_label not in BOL_FACILITY_LOOKUP:
-            current_label = BOL_FACILITY_OPTIONS[0] if BOL_FACILITY_OPTIONS else None
-
-        selected_label = st.selectbox(
-            "Select ship-from facility (batch-level)",
-            options=list(BOL_FACILITY_OPTIONS),
-            index=BOL_FACILITY_OPTIONS.index(current_label) if current_label else 0,
-            key="bol_batch_facility_selectbox",
-        )
-        _set_selected_facility(selected_label)
-
-        selected_facility: BolFacilityRecord | None = st.session_state["bol_selected_facility"]
-        if selected_facility:
+        doc_parse_result = st.session_state.get("bol_doc_upload_parse_result")
+        if isinstance(doc_parse_result, BolDocUploadParseResult) and doc_parse_result.records:
+            origin = doc_parse_result.records[0].ship_from
             st.caption(
-                "Selected facility details: "
-                f"{selected_facility['facility_name']} | "
-                f"{selected_facility['location']} | "
-                f"{selected_facility['address']}"
+                "Parsed origin: "
+                f"{origin.company} | {origin.city_state_zip} | {origin.street}"
             )
+        else:
+            st.info("Upload and parse a DOCX file to use its Origin fields.")
+    else:
+        st.caption("Choose one ship-from facility for the current uploaded batch.")
+
+        if uploaded_file is None:
+            st.info("Upload an Excel file to select a facility for this batch.")
+        else:
+            current_label = st.session_state.get("bol_selected_facility_label")
+            if current_label not in BOL_FACILITY_LOOKUP:
+                current_label = BOL_FACILITY_OPTIONS[0] if BOL_FACILITY_OPTIONS else None
+
+            selected_label = st.selectbox(
+                "Select ship-from facility (batch-level)",
+                options=list(BOL_FACILITY_OPTIONS),
+                index=BOL_FACILITY_OPTIONS.index(current_label) if current_label else 0,
+                key="bol_batch_facility_selectbox",
+            )
+            _set_selected_facility(selected_label)
+
+            selected_facility: BolFacilityRecord | None = st.session_state["bol_selected_facility"]
+            if selected_facility:
+                st.caption(
+                    "Selected facility details: "
+                    f"{selected_facility['facility_name']} | "
+                    f"{selected_facility['location']} | "
+                    f"{selected_facility['address']}"
+                )
 
     st.markdown("---")
 
@@ -545,15 +623,37 @@ def render_bol_generator_view() -> None:
     st.markdown("---")
 
     st.subheader("Parse")
-    parse_disabled = st.session_state["bol_uploaded_filename"] is None
-    if st.button("Parse Excel", disabled=parse_disabled):
+    parse_disabled = (
+        st.session_state["bol_uploaded_doc_filename"] is None
+        if input_source == "Doc upload"
+        else st.session_state["bol_uploaded_filename"] is None
+    )
+    parse_button_label = "Parse Doc" if input_source == "Doc upload" else "Parse Excel"
+    if st.button(parse_button_label, disabled=parse_disabled):
         st.session_state["bol_parse_requested"] = True
         st.session_state["bol_parse_error"] = None
         _clear_generation_state()
 
         selected_mode = st.session_state["bol_mode"]
         try:
-            if selected_mode == "Multistop":
+            if input_source == "Doc upload":
+                if selected_mode not in ("Standard", "No Recourse"):
+                    raise ValueError("DOCX upload is only supported for Standard and No Recourse BOLs.")
+                doc_parse_result = parse_bol_doc_upload(uploaded_doc_file)
+                grouped_records = doc_parse_result.records
+                parsed_rows = []
+                st.session_state["bol_doc_upload_parse_result"] = doc_parse_result
+                if grouped_records:
+                    origin = grouped_records[0].ship_from
+                    st.session_state["bol_selected_facility_label"] = None
+                    st.session_state["bol_selected_facility"] = {
+                        "facility": "DOC_UPLOAD_ORIGIN",
+                        "facility_name": origin.company,
+                        "location": origin.city_state_zip,
+                        "address": origin.street,
+                    }
+                    st.session_state["bol_batch_comment"] = grouped_records[0].comments
+            elif selected_mode == "Multistop":
                 parsed_rows = parse_multistop_bol_excel(uploaded_file)
                 grouped_records = map_multistop_rows_to_records(parsed_rows)
             else:
@@ -568,31 +668,46 @@ def render_bol_generator_view() -> None:
         except ValueError as exc:
             st.session_state["bol_parsed_rows"] = []
             st.session_state["bol_grouped_records"] = []
+            st.session_state["bol_doc_upload_parse_result"] = None
             _clear_review_state()
             st.session_state["bol_parse_error"] = str(exc)
         except Exception as exc:
             st.session_state["bol_parsed_rows"] = []
             st.session_state["bol_grouped_records"] = []
+            st.session_state["bol_doc_upload_parse_result"] = None
             _clear_review_state()
             st.session_state["bol_parse_error"] = f"Unexpected parse error: {exc}"
 
     if parse_disabled:
-        st.info("Upload an Excel file to enable parsing.")
+        if input_source == "Doc upload":
+            st.info("Upload a DOCX file to enable parsing.")
+        else:
+            st.info("Upload an Excel file to enable parsing.")
     elif st.session_state["bol_parse_error"]:
         st.error(st.session_state["bol_parse_error"])
     elif st.session_state["bol_parse_requested"] and st.session_state["bol_grouped_records"]:
-        parsed_rows: list[BolStandardRow] = st.session_state["bol_parsed_rows"]
+        parsed_rows: list[Any] = st.session_state["bol_parsed_rows"]
         grouped_records: list[BolStandardRecord] = st.session_state["bol_grouped_records"]
-        unique_bol_count = len({row.bol_number for row in parsed_rows if row.bol_number})
+        if input_source == "Doc upload":
+            unique_bol_count = len({record.bol_number for record in grouped_records if record.bol_number})
+        else:
+            unique_bol_count = len({row.bol_number for row in parsed_rows if row.bol_number})
         ready_count = sum(1 for record in grouped_records if record.is_ready)
         issue_count = len(grouped_records) - ready_count
         st.success("Parse complete.")
         st.write(
             {
-                "source_file": st.session_state["bol_uploaded_filename"],
+                "source_file": (
+                    st.session_state["bol_uploaded_doc_filename"]
+                    if input_source == "Doc upload"
+                    else st.session_state["bol_uploaded_filename"]
+                ),
                 "mode": st.session_state["bol_mode"],
-                "worksheet": "MAIN LOAD SHEET",
-                "rows_parsed": len(parsed_rows),
+                "input_source": input_source,
+                "worksheet": "DOCX Shipment Request Form" if input_source == "Doc upload" else "MAIN LOAD SHEET",
+                "rows_parsed": (
+                    len(grouped_records) if input_source == "Doc upload" else len(parsed_rows)
+                ),
                 "unique_bol_numbers_found": unique_bol_count,
                 "grouped_records": len(grouped_records),
                 "ready_records": ready_count,
@@ -601,7 +716,7 @@ def render_bol_generator_view() -> None:
             }
         )
     else:
-        st.info("Parse summary will appear here after clicking Parse Excel.")
+        st.info(f"Parse summary will appear here after clicking {parse_button_label}.")
 
     st.markdown("---")
 

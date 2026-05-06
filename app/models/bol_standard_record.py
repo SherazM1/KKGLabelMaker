@@ -58,3 +58,4 @@ class BolStandardRecord:
     generation_skip_reason: str | None = None
     conversion_skip_reason: str | None = None
     issues: list[str] = field(default_factory=list)
+    carrier_pro_number: str = ""

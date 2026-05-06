@@ -714,7 +714,7 @@ def _apply_template_record_values(
         _tok("BOL"): record.bol_number,
         _tok("SHIP_DATE"): _format_ship_date_for_template(record.ship_date),
         _tok("CARRIER"): record.carrier,
-        _tok("Carrier_Pro_"): record.kk_load_number,
+        _tok("Carrier_Pro_"): record.carrier_pro_number or record.kk_load_number,
         _tok("HOST_PO"): record.po_number,
         _tok("KKG_PO"): record.kk_po_number,
         _tok("KKG_LOAD_"): record.kk_load_number,
