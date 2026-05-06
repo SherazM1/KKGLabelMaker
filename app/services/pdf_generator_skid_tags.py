@@ -5,7 +5,7 @@ from __future__ import annotations
 from io import BytesIO
 from pathlib import Path
 
-from reportlab.lib.pagesizes import landscape, letter
+from reportlab.lib.pagesizes import letter
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
@@ -13,13 +13,13 @@ from reportlab.pdfgen import canvas
 from app.models.skid_tag import SkidTag
 
 
-PAGE_WIDTH, PAGE_HEIGHT = landscape(letter)
+PAGE_WIDTH, PAGE_HEIGHT = letter
 TIMES_NEW_ROMAN = "SkidTagsTimesNewRoman"
 APTOS_NARROW = "SkidTagsAptosNarrow"
 TAG_FONT_SIZE = 72
 PO_VALUE_FONT_SIZE = 60
 LINE_GAP = 102
-Y_START = 500
+Y_START = 600
 
 
 def _font_candidates(*names: str) -> list[Path]:
@@ -119,9 +119,10 @@ def generate_skid_tags_pdf(tags: list[SkidTag]) -> bytes:
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=(PAGE_WIDTH, PAGE_HEIGHT))
 
-    for tag in tags:
+    for index, tag in enumerate(tags):
         _draw_tag_page(pdf, tag)
-        pdf.showPage()
+        if index < len(tags) - 1:
+            pdf.showPage()
 
     pdf.save()
     buffer.seek(0)

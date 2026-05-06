@@ -29,10 +29,16 @@ def _set_run_font(run, font_name: str, font_size: Pt) -> None:
     run._element.rPr.rFonts.set(qn("w:cs"), font_name)
 
 
-def _add_centered_paragraph(document: Document, text: str) -> None:
+def _add_centered_paragraph(
+    document: Document,
+    text: str,
+    space_after: Pt = LINE_SPACING,
+) -> None:
     paragraph = document.add_paragraph()
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    paragraph.paragraph_format.space_after = LINE_SPACING
+    paragraph.paragraph_format.space_before = Pt(0)
+    paragraph.paragraph_format.space_after = space_after
+    paragraph.paragraph_format.line_spacing = 1
     run = paragraph.add_run(text)
     _set_run_font(run, TIMES_NEW_ROMAN, TAG_FONT_SIZE)
 
@@ -40,7 +46,9 @@ def _add_centered_paragraph(document: Document, text: str) -> None:
 def _add_po_paragraph(document: Document, po_value: str) -> None:
     paragraph = document.add_paragraph()
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    paragraph.paragraph_format.space_before = Pt(0)
     paragraph.paragraph_format.space_after = LINE_SPACING
+    paragraph.paragraph_format.line_spacing = 1
 
     label_run = paragraph.add_run("PO ")
     _set_run_font(label_run, TIMES_NEW_ROMAN, TAG_FONT_SIZE)
@@ -54,7 +62,7 @@ def _add_tag_page(document: Document, tag: SkidTag) -> None:
     _add_po_paragraph(document, tag.po_display)
     _add_centered_paragraph(document, f"UPC {tag.upc}")
     _add_centered_paragraph(document, tag.pallet_display)
-    _add_centered_paragraph(document, f"Qty: {tag.quantity}")
+    _add_centered_paragraph(document, f"Qty: {tag.quantity}", space_after=Pt(0))
 
 
 def generate_skid_tags_docx(tags: list[SkidTag]) -> bytes:
@@ -63,13 +71,13 @@ def generate_skid_tags_docx(tags: list[SkidTag]) -> bytes:
 
     document = Document()
     section = document.sections[0]
-    section.orientation = WD_ORIENT.LANDSCAPE
-    section.page_width = Inches(11)
-    section.page_height = Inches(8.5)
-    section.top_margin = Inches(0.85)
+    section.orientation = WD_ORIENT.PORTRAIT
+    section.page_width = Inches(8.5)
+    section.page_height = Inches(11)
+    section.top_margin = Inches(2.0)
     section.bottom_margin = Inches(0.65)
-    section.left_margin = Inches(1.0)
-    section.right_margin = Inches(1.0)
+    section.left_margin = Inches(0.45)
+    section.right_margin = Inches(0.45)
 
     for index, tag in enumerate(tags):
         if index:
