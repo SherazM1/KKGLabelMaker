@@ -158,10 +158,6 @@ def _parse_number(value: str) -> float:
         return 0.0
 
 
-def _format_number(value: float) -> str:
-    return str(int(value)) if float(value).is_integer() else f"{value:.2f}".rstrip("0").rstrip(".")
-
-
 def _build_item_description(fields: dict[str, str]) -> str:
     comments = fields.get("comments", "")
     if comments:
@@ -209,8 +205,7 @@ def _build_standard_record(fields: dict[str, str]) -> BolStandardRecord:
     bol_number = delivery_number or kkg_po or carrier_pro
     kkg_load = fields.get("kkg_load", "") or "1"
     pallet_qty = fields.get("pallet_qty", "")
-    raw_pallet_weight = fields.get("pallet_weight", "")
-    pallet_weight = _format_number(_parse_number(raw_pallet_weight)) if raw_pallet_weight else ""
+    pallet_weight = fields.get("pallet_weight", "")
     item_description = _build_item_description(fields)
 
     ship_from = BolAddressBlock(

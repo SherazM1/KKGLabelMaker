@@ -642,6 +642,8 @@ def render_bol_generator_view() -> None:
                 doc_parse_result = parse_bol_doc_upload(uploaded_doc_file)
                 grouped_records = doc_parse_result.records
                 parsed_rows = []
+                st.session_state["bol_record_comments"] = {}
+                st.session_state["bol_record_selection"] = {}
                 st.session_state["bol_doc_upload_parse_result"] = doc_parse_result
                 if grouped_records:
                     origin = grouped_records[0].ship_from

@@ -5,6 +5,7 @@ from io import BytesIO
 from docx import Document
 
 from app.services.bol_doc_upload_parser import parse_bol_doc_upload
+from app.services.bol_standard_docx_generator import _parse_numeric
 
 
 def _build_docx_upload(rows: list[tuple[str, str]], filename: str = "Shipment Request Form.docx"):
@@ -61,12 +62,19 @@ def test_parse_bol_doc_upload_extracts_shipment_request_fields():
     assert record.comments == "Mixed Freight"
     assert record.item_lines[0].pallet_qty == "3"
     assert record.item_lines[0].skids == "3"
-    assert record.item_lines[0].weight_each == "300"
+    assert record.item_lines[0].weight_each == "300 lbs."
     assert record.item_lines[0].item_description == "Mixed Freight"
     assert "40x48x36" not in record.item_lines[0].item_description
     assert "26-INCM-02456" not in record.item_lines[0].item_description
     assert record.item_lines[0].item_number == ""
     assert record.item_lines[0].upc == ""
+
+
+def test_standard_bol_numeric_parser_handles_doc_upload_weight_units():
+    assert _parse_numeric("300 lbs.") == 300
+    assert _parse_numeric("300 lbs") == 300
+    assert _parse_numeric("300") == 300
+    assert _parse_numeric("300.0") == 300
 
 
 def test_parse_bol_doc_upload_allows_optional_item_number_and_upc():

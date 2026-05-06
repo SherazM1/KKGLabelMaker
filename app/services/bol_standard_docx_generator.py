@@ -324,8 +324,11 @@ def _parse_numeric(value: str) -> float | None:
     cleaned = (value or "").replace(",", "").strip()
     if not cleaned:
         return None
+    numeric_match = re.search(r"-?\d+(?:\.\d+)?", cleaned)
+    if numeric_match is None:
+        return None
     try:
-        return float(cleaned)
+        return float(numeric_match.group(0))
     except ValueError:
         return None
 
