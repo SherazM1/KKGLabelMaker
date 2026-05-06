@@ -58,10 +58,13 @@ def test_parse_bol_doc_upload_extracts_shipment_request_fields():
     assert record.kk_load_number == "1"
     assert record.carrier_pro_number == "101564"
     assert record.carrier == "TRYI"
-    assert record.comments == "Mixed Freight | Project: 26-INCM-02456"
+    assert record.comments == "Mixed Freight"
     assert record.item_lines[0].pallet_qty == "3"
     assert record.item_lines[0].skids == "3"
-    assert record.item_lines[0].weight_each == "300 lbs."
+    assert record.item_lines[0].weight_each == "300"
+    assert record.item_lines[0].item_description == "Mixed Freight"
+    assert "40x48x36" not in record.item_lines[0].item_description
+    assert "26-INCM-02456" not in record.item_lines[0].item_description
     assert record.item_lines[0].item_number == ""
     assert record.item_lines[0].upc == ""
 

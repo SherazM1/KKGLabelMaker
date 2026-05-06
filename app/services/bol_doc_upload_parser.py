@@ -158,28 +158,19 @@ def _parse_number(value: str) -> float:
         return 0.0
 
 
+def _format_number(value: float) -> str:
+    return str(int(value)) if float(value).is_integer() else f"{value:.2f}".rstrip("0").rstrip(".")
+
+
 def _build_item_description(fields: dict[str, str]) -> str:
-    parts: list[str] = []
-    pallet_dims = fields.get("pallet_dims", "")
-    project = fields.get("project", "")
     comments = fields.get("comments", "")
-
-    if pallet_dims:
-        parts.append(f"Pallet DIMS: {pallet_dims}")
-    if project:
-        parts.append(f"Project: {project}")
     if comments:
-        parts.append(comments)
-
-    return " | ".join(parts) if parts else "Shipment Request Form freight"
+        return comments
+    return "Shipment Request Form freight"
 
 
 def _build_comments(fields: dict[str, str]) -> str:
-    comments = fields.get("comments", "")
-    project = fields.get("project", "")
-    if comments and project:
-        return f"{comments} | Project: {project}"
-    return comments or (f"Project: {project}" if project else "")
+    return fields.get("comments", "")
 
 
 def _validate_doc_upload_fields(fields: dict[str, str]) -> None:
@@ -218,7 +209,8 @@ def _build_standard_record(fields: dict[str, str]) -> BolStandardRecord:
     bol_number = delivery_number or kkg_po or carrier_pro
     kkg_load = fields.get("kkg_load", "") or "1"
     pallet_qty = fields.get("pallet_qty", "")
-    pallet_weight = fields.get("pallet_weight", "")
+    raw_pallet_weight = fields.get("pallet_weight", "")
+    pallet_weight = _format_number(_parse_number(raw_pallet_weight)) if raw_pallet_weight else ""
     item_description = _build_item_description(fields)
 
     ship_from = BolAddressBlock(
