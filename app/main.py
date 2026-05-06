@@ -14,11 +14,14 @@ from app.services.excel_reader_andersons import (
 )
 from app.services.excel_reader_sams import read_excel_sams
 from app.services.excel_reader_sams_gci import read_excel_sams_gci
+from app.services.excel_reader_skid_tags import read_excel_skid_tags
+from app.services.docx_generator_skid_tags import generate_skid_tags_docx
 from app.services.pdf_generator_albertsons import generate_albertsons_pdf
 from app.services.pdf_generator_andersons import generate_andersons_pdf
 from app.services.pdf_generator import generate_label_pdf
 from app.services.pdf_generator_sams import generate_sams_pdf
 from app.services.pdf_generator_sams_gci import generate_sams_gci_pdf
+from app.services.pdf_generator_skid_tags import generate_skid_tags_pdf
 from app.ui.bol_generator import render_bol_generator_view
 
 
@@ -434,7 +437,7 @@ def render_home() -> None:
     if st.button("BOL Generator", use_container_width=True):
         st.session_state["page"] = "bol_generator"
 
-    if st.button("SKID Tags (Coming Soon)", disabled=True, use_container_width=True):
+    if st.button("SKID Tags", use_container_width=True):
         st.session_state["page"] = "skid_tags"
 
     if st.button("Truck Inventory (Coming Soon)", disabled=True, use_container_width=True):
@@ -472,6 +475,80 @@ def render_bol_generator() -> None:
     render_bol_generator_view()
 
 
+def render_skid_tags() -> None:
+    if st.button("â† Back to Home"):
+        st.session_state["page"] = "home"
+        st.stop()
+
+    _apply_theme_styles()
+    render_hub_header()
+    st.title("SKID Tags")
+
+    uploaded_file = st.file_uploader(
+        "Upload Excel input",
+        type=["xlsx", "xlsm", "xls"],
+        key="skid_tags_file_uploader",
+    )
+
+    if uploaded_file is None:
+        st.info("Upload an Excel file to begin.")
+        return
+
+    try:
+        tags = read_excel_skid_tags(uploaded_file)
+    except ValueError as exc:
+        st.error(f"Validation error: {exc}")
+        return
+    except Exception as exc:
+        st.error(f"Unexpected error: {exc}")
+        return
+
+    source_rows = len({tag.source_row_number for tag in tags})
+    dc_count = len({tag.dc for tag in tags})
+    po_count = len({tag.po for tag in tags})
+    st.success(
+        f"Parsed {source_rows} Excel rows into {len(tags)} SKID tag pages "
+        f"across {dc_count} DCs and {po_count} POs."
+    )
+
+    if st.button("Generate SKID Tags", type="primary", key="generate_skid_tags"):
+        try:
+            st.session_state["skid_tags_docx_bytes"] = generate_skid_tags_docx(tags)
+            st.session_state["skid_tags_pdf_bytes"] = generate_skid_tags_pdf(tags)
+        except ValueError as exc:
+            st.error(f"Generation error: {exc}")
+            return
+        except Exception as exc:
+            st.error(f"Unexpected generation error: {exc}")
+            return
+
+    docx_bytes = st.session_state.get("skid_tags_docx_bytes")
+    pdf_bytes = st.session_state.get("skid_tags_pdf_bytes")
+    if docx_bytes and pdf_bytes:
+        docx_col, pdf_col = st.columns(2)
+        with docx_col:
+            st.download_button(
+                label="Download SKID Tags DOCX",
+                data=docx_bytes,
+                file_name="skid_tags.docx",
+                mime=(
+                    "application/vnd.openxmlformats-officedocument."
+                    "wordprocessingml.document"
+                ),
+                key="download_skid_tags_docx",
+                use_container_width=True,
+            )
+        with pdf_col:
+            st.download_button(
+                label="Download SKID Tags PDF",
+                data=pdf_bytes,
+                file_name="skid_tags.pdf",
+                mime="application/pdf",
+                key="download_skid_tags_pdf",
+                use_container_width=True,
+            )
+
+
 def main() -> None:
     """Run the Streamlit user interface."""
     st.set_page_config(page_title="Kendal King Operations Hub", layout="centered")
@@ -486,6 +563,8 @@ def main() -> None:
         render_label_maker()
     elif st.session_state["page"] == "bol_generator":
         render_bol_generator()
+    elif st.session_state["page"] == "skid_tags":
+        render_skid_tags()
 
 
 if __name__ == "__main__":
