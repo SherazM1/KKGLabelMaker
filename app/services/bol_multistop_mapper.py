@@ -224,19 +224,11 @@ def map_multistop_rows_to_records(rows: list[BolMultistopRow]) -> list[BolMultis
         optional_warnings = _optional_grouped_field_warnings(group_rows)
         validation_warnings: list[str] = []
 
-        rows_sorted = sorted(
-            group_rows,
-            key=lambda row: (
-                row.stop_number if row.stop_number is not None else 9999,
-                row.source_row_number,
-            ),
-        )
-
         rows_by_stop: dict[int, BolMultistopRow] = {}
         distinct_stops: set[int] = set()
         malformed_stop_rows = 0
 
-        for row in rows_sorted:
+        for row in group_rows:
             if row.stop_number is None or row.stop_number <= 0:
                 malformed_stop_rows += 1
                 if not row.stop.strip():
@@ -265,10 +257,18 @@ def map_multistop_rows_to_records(rows: list[BolMultistopRow]) -> list[BolMultis
             )
 
         ordered_stops: list[BolMultistopStop] = []
-        for stop_number in range(1, MAX_SUPPORTED_STOPS + 1):
-            row = rows_by_stop.get(stop_number)
-            if row is None:
+        used_stop_numbers: set[int] = set()
+        for row in group_rows:
+            stop_number = row.stop_number
+            if (
+                stop_number is None
+                or stop_number <= 0
+                or stop_number > MAX_SUPPORTED_STOPS
+                or stop_number in used_stop_numbers
+                or stop_number not in rows_by_stop
+            ):
                 continue
+            used_stop_numbers.add(stop_number)
             stop = _build_stop(row, stop_number)
             ordered_stops.append(stop)
             issues.extend(_validate_stop_fields(stop))

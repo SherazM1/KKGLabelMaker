@@ -82,6 +82,10 @@ def _initialize_bol_state() -> None:
         st.session_state["bol_batch_comment"] = ""
     if "bol_batch_comment_textarea" not in st.session_state:
         st.session_state["bol_batch_comment_textarea"] = ""
+    if "bol_type_selector" not in st.session_state:
+        st.session_state["bol_type_selector"] = "PLT"
+    if "bol_batch_name" not in st.session_state:
+        st.session_state["bol_batch_name"] = ""
     if "bol_multistop_individual_template_mode" not in st.session_state:
         st.session_state["bol_multistop_individual_template_mode"] = "Standard"
 
@@ -119,6 +123,7 @@ def _refresh_bundles() -> StandardBundleResult | None:
                     else []
                 ),
                 bundle_name_prefix="multistop_bol",
+                batch_name=st.session_state.get("bol_batch_name", ""),
                 include_all_files_bundle=include_all_files_bundle,
             )
         else:
@@ -130,6 +135,7 @@ def _refresh_bundles() -> StandardBundleResult | None:
                     else []
                 ),
                 bundle_name_prefix=resolve_output_filename_prefix_for_mode(mode),
+                batch_name=st.session_state.get("bol_batch_name", ""),
                 include_all_files_bundle=include_all_files_bundle,
             )
         st.session_state["bol_bundle_result"] = bundle_result
@@ -441,6 +447,27 @@ def render_bol_generator_view() -> None:
 
     st.markdown("---")
 
+    st.subheader("BOL Output Options")
+    current_bol_type = st.session_state.get("bol_type_selector", "PLT")
+    if current_bol_type not in ("PLT", "CASE"):
+        current_bol_type = "PLT"
+        st.session_state["bol_type_selector"] = current_bol_type
+    st.selectbox(
+        "TYPE",
+        options=["PLT", "CASE"],
+        index=["PLT", "CASE"].index(current_bol_type),
+        key="bol_type_selector",
+        on_change=_clear_generation_state,
+    )
+    st.text_input(
+        "Batch name",
+        key="bol_batch_name",
+        placeholder="Optional name for download bundles.",
+        on_change=_refresh_bundles,
+    )
+
+    st.markdown("---")
+
     st.subheader("Upload Excel")
     st.caption("Accepted file types: .xlsx, .xlsm, .xls")
     uploaded_file = st.file_uploader(
@@ -702,6 +729,7 @@ def render_bol_generator_view() -> None:
                     grouped_records,
                     selected_facility=st.session_state["bol_selected_facility"],
                     batch_comment=st.session_state.get("bol_batch_comment_textarea", ""),
+                    bol_type=st.session_state.get("bol_type_selector", "PLT"),
                     template_path=MULTISTOP_TEMPLATE_PATH,
                     individual_stop_template_path=resolve_template_path_for_mode(
                         individual_template_mode
@@ -714,6 +742,7 @@ def render_bol_generator_view() -> None:
                     grouped_records,
                     selected_facility=st.session_state["bol_selected_facility"],
                     batch_comment=st.session_state.get("bol_batch_comment_textarea", ""),
+                    bol_type=st.session_state.get("bol_type_selector", "PLT"),
                     template_path=template_path,
                     file_name_prefix=resolve_output_filename_prefix_for_mode(mode),
                 )
@@ -850,6 +879,7 @@ def render_bol_generator_view() -> None:
                     grouped_records,
                     selected_facility=st.session_state["bol_selected_facility"],
                     batch_comment=st.session_state.get("bol_batch_comment_textarea", ""),
+                    bol_type=st.session_state.get("bol_type_selector", "PLT"),
                     template_path=MULTISTOP_TEMPLATE_PATH,
                     individual_stop_template_path=resolve_template_path_for_mode(
                         individual_template_mode
@@ -862,6 +892,7 @@ def render_bol_generator_view() -> None:
                     grouped_records,
                     selected_facility=st.session_state["bol_selected_facility"],
                     batch_comment=st.session_state.get("bol_batch_comment_textarea", ""),
+                    bol_type=st.session_state.get("bol_type_selector", "PLT"),
                     template_path=template_path,
                     file_name_prefix=resolve_output_filename_prefix_for_mode(mode),
                 )

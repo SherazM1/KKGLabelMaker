@@ -122,6 +122,11 @@ def _sanitize_filename_part(value: str) -> str:
     return cleaned or "unknown"
 
 
+def _normalize_bol_type(bol_type: str | None) -> str:
+    normalized = (bol_type or "PLT").strip().upper()
+    return normalized if normalized in {"PLT", "CASE"} else "PLT"
+
+
 def _unique_destination_path(directory: Path, base_name: str, extension: str) -> Path:
     candidate = directory / f"{base_name}{extension}"
     if not candidate.exists():
@@ -291,12 +296,13 @@ def _suppress_duplicate_ship_from_city_state_line(doc: Document, ship_from_locat
                     cell.text = ""
 
 
-def _item_row_replacements(line: BolStandardItemLine) -> dict[str, str]:
+def _item_row_replacements(line: BolStandardItemLine, bol_type: str | None = None) -> dict[str, str]:
+    rendered_type = _normalize_bol_type(bol_type)
     replacements: dict[str, str] = {}
     for alias in ITEM_TOKEN_ALIASES["QTY"]:
         replacements[_tok(alias)] = line.pallet_qty
     for alias in ITEM_TOKEN_ALIASES["TYPE"]:
-        replacements[_tok(alias)] = "PLT"
+        replacements[_tok(alias)] = rendered_type
     for alias in ITEM_TOKEN_ALIASES["PO"]:
         replacements[_tok(alias)] = line.po_number
     for alias in ITEM_TOKEN_ALIASES["ITEM_DESCRIPTION"]:
@@ -382,9 +388,11 @@ def _populate_item_table(
     item_lines: list[BolStandardItemLine],
     total_qty: float,
     *,
+    bol_type: str | None = None,
     compact_standard_item_area: bool = False,
     filter_blank_item_lines: bool = False,
 ) -> None:
+    rendered_type = _normalize_bol_type(bol_type)
     rendered_item_lines = (
         [line for line in item_lines if _item_line_has_data(line)]
         if filter_blank_item_lines
@@ -454,7 +462,7 @@ def _populate_item_table(
 
         for idx, line in enumerate(rendered_item_lines):
             new_tr = deepcopy(template_trs[idx % len(template_trs)])
-            _replace_tokens_in_row_element(new_tr, _item_row_replacements(line))
+            _replace_tokens_in_row_element(new_tr, _item_row_replacements(line, rendered_type))
             anchor_tr.addprevious(new_tr)
     else:
         empty_item_replacements = {token: "" for token in ITEM_PLACEHOLDER_TOKENS}
@@ -462,7 +470,7 @@ def _populate_item_table(
             row_tr = table.rows[row_idx]._tr
             if template_idx < len(rendered_item_lines):
                 _replace_tokens_in_row_element(
-                    row_tr, _item_row_replacements(rendered_item_lines[template_idx])
+                    row_tr, _item_row_replacements(rendered_item_lines[template_idx], rendered_type)
                 )
             else:
                 _replace_tokens_in_row_element(row_tr, empty_item_replacements)
@@ -472,7 +480,7 @@ def _populate_item_table(
                 rendered_item_lines[len(contiguous_item_row_indices):], start=0
             ):
                 new_tr = deepcopy(template_trs[idx % len(template_trs)])
-                _replace_tokens_in_row_element(new_tr, _item_row_replacements(line))
+                _replace_tokens_in_row_element(new_tr, _item_row_replacements(line, rendered_type))
                 anchor_tr.addprevious(new_tr)
 
     header_cells = [cell.text.strip().upper() for cell in table.rows[header_idx].cells]
@@ -510,7 +518,7 @@ def _populate_item_table(
                     row_cells[col_idx].text = line.skids
             for col_idx in type_col_indexes:
                 if col_idx < len(row_cells):
-                    row_cells[col_idx].text = line.type
+                    row_cells[col_idx].text = rendered_type
             for col_idx in weight_col_indexes:
                 if col_idx < len(row_cells):
                     row_cells[col_idx].text = line.weight_each
@@ -697,6 +705,7 @@ def _apply_template_record_values(
     selected_facility: BolFacilityRecord,
     batch_comment: str | None,
     *,
+    bol_type: str | None = None,
     compact_standard_item_area: bool = False,
     filter_blank_item_lines: bool = False,
 ) -> list[str]:
@@ -751,6 +760,7 @@ def _apply_template_record_values(
                 table,
                 record.item_lines,
                 record.total_skids,
+                bol_type=bol_type,
                 compact_standard_item_area=compact_standard_item_area,
                 filter_blank_item_lines=filter_blank_item_lines,
             )
@@ -767,6 +777,7 @@ def generate_standard_docx_set(
     records: list[BolStandardRecord],
     selected_facility: BolFacilityRecord | None,
     batch_comment: str | None = None,
+    bol_type: str | None = None,
     template_path: Path | None = None,
     output_dir: Path | None = None,
     file_name_prefix: str = "standard_bol",
@@ -816,6 +827,7 @@ def generate_standard_docx_set(
                 record,
                 selected_facility,
                 batch_comment,
+                bol_type=bol_type,
                 compact_standard_item_area=is_standard_template or is_no_recourse_template,
                 filter_blank_item_lines=is_no_recourse_template,
             )

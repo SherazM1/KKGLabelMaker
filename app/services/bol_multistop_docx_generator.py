@@ -26,6 +26,7 @@ from app.services.bol_standard_docx_generator import (
     SkippedDocxRecord,
     StandardDocxGenerationResult,
     _apply_template_record_values as _apply_standard_template_record_values,
+    _normalize_bol_type,
     _postprocess_comments_in_saved_docx as _postprocess_standard_comments_in_saved_docx,
 )
 from app.utils.bol_facilities import BolFacilityRecord
@@ -435,7 +436,8 @@ def _tighten_multistop_template_rows(doc: Document) -> None:
                 _compact_row_text(row, 8.0)
 
 
-def _clean_standard_individual_stop_item_area(doc: Document, stop) -> None:
+def _clean_standard_individual_stop_item_area(doc: Document, stop, bol_type: str | None) -> None:
+    rendered_type = _normalize_bol_type(bol_type)
     for table in doc.tables:
         header_idx = None
         for idx, row in enumerate(table.rows):
@@ -469,7 +471,7 @@ def _clean_standard_individual_stop_item_area(doc: Document, stop) -> None:
         _set_row_height(item_row, 520, exact=False)
         _compact_row_text(item_row, 8.5)
         _set_unique_cell_text(item_row, 0, stop.cases, font_points=8.5)
-        _set_unique_cell_text(item_row, 1, "PLT", font_points=8.5)
+        _set_unique_cell_text(item_row, 1, rendered_type, font_points=8.5)
         _set_unique_cell_text(item_row, 3, stop.target_po_number, font_points=8.0)
         _set_unique_cell_text(
             item_row,
@@ -496,7 +498,8 @@ def _clean_standard_individual_stop_item_area(doc: Document, stop) -> None:
         return
 
 
-def _clean_no_recourse_individual_stop_item_area(doc: Document, stop) -> None:
+def _clean_no_recourse_individual_stop_item_area(doc: Document, stop, bol_type: str | None) -> None:
+    rendered_type = _normalize_bol_type(bol_type)
     for table in doc.tables:
         header_idx = None
         for idx, row in enumerate(table.rows):
@@ -533,7 +536,7 @@ def _clean_no_recourse_individual_stop_item_area(doc: Document, stop) -> None:
         _set_row_height(item_row, 520, exact=False)
         _compact_row_text(item_row, 8.5)
         _set_unique_cell_text(item_row, 0, stop.cases, font_points=8.5)
-        _set_unique_cell_text(item_row, 1, "PLT", font_points=8.5)
+        _set_unique_cell_text(item_row, 1, rendered_type, font_points=8.5)
         _set_unique_cell_text(item_row, 3, stop.target_po_number, font_points=8.0)
         _set_unique_cell_text(
             item_row,
@@ -574,7 +577,40 @@ def _clean_no_recourse_individual_stop_item_area(doc: Document, stop) -> None:
         return
 
 
-def _clean_combined_multistop_item_area(doc: Document, record: BolMultistopRecord) -> None:
+def _apply_type_column_override(table: Table, bol_type: str | None) -> None:
+    rendered_type = _normalize_bol_type(bol_type)
+    header_idx = None
+    type_col_indexes: list[int] = []
+
+    for idx, row in enumerate(table.rows):
+        row_type_cols = [
+            cell_idx
+            for cell_idx, cell in _row_unique_cells(row)
+            if cell.text.strip().upper() == "TYPE"
+        ]
+        if row_type_cols:
+            header_idx = idx
+            type_col_indexes = row_type_cols
+            break
+
+    if header_idx is None:
+        return
+
+    for row in table.rows[header_idx + 1 :]:
+        row_text_upper = " ".join(cell.text.strip() for cell in row.cells).upper()
+        if not _row_has_visible_text(row):
+            continue
+        if "TOTALS" in row_text_upper or "SHIPPER SIGNATURE" in row_text_upper:
+            break
+        for col_idx in type_col_indexes:
+            _set_unique_cell_text(row, col_idx, rendered_type, font_points=8.5)
+
+
+def _clean_combined_multistop_item_area(
+    doc: Document,
+    record: BolMultistopRecord,
+    bol_type: str | None,
+) -> None:
     for table in doc.tables:
         header_idx = None
         for idx, row in enumerate(table.rows):
@@ -631,6 +667,7 @@ def _clean_combined_multistop_item_area(doc: Document, record: BolMultistopRecor
             _format_number(record.total_ship_weight),
             font_points=8.5,
         )
+        _apply_type_column_override(table, bol_type)
         format_bol_item_detail_table(table)
         return
 
@@ -743,7 +780,8 @@ def _fit_combined_bol_number(doc: Document, bol_number: str) -> bool:
     return False
 
 
-def _template_replacements(record: BolMultistopRecord) -> dict[str, str]:
+def _template_replacements(record: BolMultistopRecord, bol_type: str | None = None) -> dict[str, str]:
+    rendered_type = _normalize_bol_type(bol_type)
     replacements = {
         _tok("BOL_"): record.bol_number,
         _tok("ship_date"): _format_ship_date_for_template(record.ship_date),
@@ -803,16 +841,23 @@ def _template_replacements(record: BolMultistopRecord) -> dict[str, str]:
         _tok("Total_Pallet"): _format_number(record.total_pallet),
         _tok("Total_Ship_Weight"): _format_number(record.total_ship_weight),
     }
+    replacements[_tok("TYPE")] = rendered_type
+    replacements[_tok("Type")] = rendered_type
+    for index in range(1, 5):
+        replacements[_tok(f"TYPE_{index}")] = rendered_type
+        replacements[_tok(f"Type_{index}")] = rendered_type
     return replacements
 
 
 def _build_individual_stop_standard_record(
     record: BolMultistopRecord,
     stop_index: int,
+    bol_type: str | None = None,
+    display_bol_number: str | None = None,
 ) -> BolStandardRecord:
     stop = record.stops[stop_index]
     return BolStandardRecord(
-        bol_number=record.bol_number,
+        bol_number=display_bol_number or record.bol_number,
         ship_date=record.ship_date,
         carrier=record.carrier,
         kk_load_number=record.kk_load_number,
@@ -830,7 +875,7 @@ def _build_individual_stop_standard_record(
             BolStandardItemLine(
                 source_row_number=stop.source_row_number,
                 pallet_qty=stop.cases,
-                type="PLT",
+                type=_normalize_bol_type(bol_type),
                 po_number=stop.target_po_number,
                 item_description=_format_multistop_item_description(
                     stop.pallet_description,
@@ -862,13 +907,14 @@ def _save_multistop_docx(
     replacements: dict[str, str],
     document_type: str,
     stop_number: int | None,
+    bol_type: str | None,
     notices: list[DocxGenerationNotice],
 ) -> MultistopGeneratedDocxFile:
     doc = Document(str(resolved_template))
     _tighten_multistop_template_rows(doc)
     _replace_text_in_document(doc, replacements, include_xml_tree=True)
     _fit_combined_bol_number(doc, record.bol_number)
-    _clean_combined_multistop_item_area(doc, record)
+    _clean_combined_multistop_item_area(doc, record, bol_type)
     for table in doc.tables:
         format_bol_item_detail_table(table)
     ship_from_populated = _populate_ship_from_block(doc, selected_facility)
@@ -928,10 +974,22 @@ def _save_individual_stop_docx(
     output_root: Path,
     base_name: str,
     stop_index: int,
+    bol_type: str | None,
     notices: list[DocxGenerationNotice],
 ) -> MultistopGeneratedDocxFile:
     stop = record.stops[stop_index]
-    stop_record = _build_individual_stop_standard_record(record, stop_index)
+    base_bol_number = (record.bol_number or "").strip()
+    display_bol_number = (
+        f"{base_bol_number}-{stop.stop_number:02d}"
+        if base_bol_number
+        else record.bol_number
+    )
+    stop_record = _build_individual_stop_standard_record(
+        record,
+        stop_index,
+        bol_type=bol_type,
+        display_bol_number=display_bol_number,
+    )
     doc = Document(str(resolved_template))
     is_standard_template = resolved_template.name == STANDARD_TEMPLATE_PATH.name
     is_no_recourse_template = resolved_template.name == NO_RECOURSE_TEMPLATE_PATH.name
@@ -941,12 +999,13 @@ def _save_individual_stop_docx(
         stop_record,
         selected_facility,
         batch_comment,
+        bol_type=bol_type,
         compact_standard_item_area=is_standard_template,
     )
     if is_standard_template:
-        _clean_standard_individual_stop_item_area(doc, stop)
+        _clean_standard_individual_stop_item_area(doc, stop, bol_type)
     elif is_no_recourse_template:
-        _clean_no_recourse_individual_stop_item_area(doc, stop)
+        _clean_no_recourse_individual_stop_item_area(doc, stop, bol_type)
     for message in record_notice_messages:
         notices.append(DocxGenerationNotice(bol_number=bol_label, message=message))
 
@@ -983,6 +1042,7 @@ def generate_multistop_docx_set(
     records: list[BolMultistopRecord],
     selected_facility: BolFacilityRecord | None,
     batch_comment: str | None = None,
+    bol_type: str | None = None,
     template_path: Path | None = None,
     individual_stop_template_path: Path | None = None,
     output_dir: Path | None = None,
@@ -1053,9 +1113,10 @@ def generate_multistop_docx_set(
                     resolved_template=resolved_template,
                     output_root=output_root,
                     base_name=combined_base_name,
-                    replacements=_template_replacements(record),
+                    replacements=_template_replacements(record, bol_type),
                     document_type="combined",
                     stop_number=None,
+                    bol_type=bol_type,
                     notices=notices,
                 )
             )
@@ -1072,6 +1133,7 @@ def generate_multistop_docx_set(
                         output_root=output_root,
                         base_name=stop_base_name,
                         stop_index=stop_index,
+                        bol_type=bol_type,
                         notices=notices,
                     )
                 )

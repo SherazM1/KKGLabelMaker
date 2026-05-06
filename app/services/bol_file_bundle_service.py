@@ -72,6 +72,22 @@ def _sanitize_archive_part(value: str) -> str:
     return cleaned or "unknown"
 
 
+def _sanitize_batch_name(value: str | None) -> str:
+    cleaned = "".join(
+        char if char.isalnum() or char in ("-", "_") else "_"
+        for char in (value or "").strip().replace(" ", "_")
+    )
+    cleaned = "_".join(part for part in cleaned.split("_") if part)
+    return cleaned.strip("_")
+
+
+def _prefix_with_batch_name(prefix: str, batch_name: str | None) -> str:
+    safe_batch_name = _sanitize_batch_name(batch_name)
+    if not safe_batch_name:
+        return prefix
+    return f"{safe_batch_name}_{prefix}"
+
+
 def _safe_archive_name(value: str, expected_suffix: str | None = ".docx") -> str:
     fallback_suffix = expected_suffix or ".docx"
     path = Path(value or f"generated{fallback_suffix}")
@@ -146,6 +162,7 @@ def create_multistop_bundles(
     converted_pdf_files: list[ConvertedPdfFile] | None = None,
     output_dir: Path | None = None,
     bundle_name_prefix: str = "multistop_bol",
+    batch_name: str | None = None,
     include_all_files_bundle: bool = True,
 ) -> StandardBundleResult:
     output_root = output_dir or Path(mkdtemp(prefix="kkg_multistop_bol_bundles_"))
@@ -154,6 +171,7 @@ def create_multistop_bundles(
     prefix = (bundle_name_prefix or "multistop_bol").strip()
     if not prefix:
         prefix = "multistop_bol"
+    prefix = _prefix_with_batch_name(prefix, batch_name)
 
     converted_pdf_files = converted_pdf_files or []
     existing_docx_files = [
@@ -206,12 +224,14 @@ def create_multistop_docx_bundle(
     generated_docx_files: list[GeneratedDocxFile],
     output_dir: Path | None = None,
     bundle_name_prefix: str = "multistop_bol",
+    batch_name: str | None = None,
 ) -> StandardBundleResult:
     return create_multistop_bundles(
         generated_docx_files=generated_docx_files,
         converted_pdf_files=[],
         output_dir=output_dir,
         bundle_name_prefix=bundle_name_prefix,
+        batch_name=batch_name,
         include_all_files_bundle=True,
     )
 
@@ -221,6 +241,7 @@ def create_standard_bundles(
     converted_pdf_files: list[ConvertedPdfFile],
     output_dir: Path | None = None,
     bundle_name_prefix: str = DEFAULT_BUNDLE_NAME_PREFIX,
+    batch_name: str | None = None,
     include_all_files_bundle: bool = True,
 ) -> StandardBundleResult:
     output_root = output_dir or Path(mkdtemp(prefix="kkg_standard_bol_bundles_"))
@@ -240,6 +261,7 @@ def create_standard_bundles(
     prefix = (bundle_name_prefix or DEFAULT_BUNDLE_NAME_PREFIX).strip()
     if not prefix:
         prefix = DEFAULT_BUNDLE_NAME_PREFIX
+    prefix = _prefix_with_batch_name(prefix, batch_name)
     docx_bundle_filename = f"{prefix}_docx_bundle.zip"
     pdf_bundle_filename = f"{prefix}_pdf_bundle.zip"
     all_files_bundle_filename = f"{prefix}_all_files_bundle.zip"
