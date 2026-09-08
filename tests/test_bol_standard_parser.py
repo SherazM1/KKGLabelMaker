@@ -8,6 +8,12 @@ import pytest
 from openpyxl import load_workbook
 
 from app.services.bol_standard_parser import get_excel_sheet_names, parse_standard_bol_excel
+from app.services.bol_standard_parser import (
+    ADDITIONAL_COLUMN_ALIASES,
+    OPTIONAL_COLUMN_SPECS,
+    REQUIRED_COLUMN_SPECS,
+    _resolve_columns_with_missing,
+)
 from app.services.bol_standard_mapper import map_standard_rows_to_records
 from app.utils.bol_facilities import BOL_FACILITY_LOOKUP
 
@@ -35,6 +41,49 @@ def _standard_load_row() -> dict[str, object]:
         "weight each": 50,
         "Total Weight": 100,
     }
+
+
+@pytest.mark.parametrize(
+    ("field", "alias"),
+    [(field, alias) for field, aliases in ADDITIONAL_COLUMN_ALIASES.items() for alias in aliases],
+)
+def test_expanded_headers_resolve_with_formatting_variations(field: str, alias: str) -> None:
+    specs = {**REQUIRED_COLUMN_SPECS, **OPTIONAL_COLUMN_SPECS}
+    headers = [str(spec["primary"]) for key, spec in specs.items() if key != field]
+    variant = " \n" + alias.swapcase().replace(" ", "_ .\t") + "\r "
+    resolved, missing = _resolve_columns_with_missing([*headers, variant], "Load Sheet")
+    assert missing == []
+    assert resolved[field] == variant
+
+
+@pytest.mark.parametrize("csv", [False, True])
+def test_screenshot_address_and_weight_headers(csv: bool) -> None:
+    row = _standard_load_row()
+    for old, new in [("DC STREET", "DC ADDRESS"), ("TGT PO #", "WMT PO #"), ("Total Weight", "Weight")]:
+        row[new] = row.pop(old)
+    row.pop("TOTAL PALLETS")
+    upload = _csv_with_rows([row]) if csv else _workbook_with_sheet("Load sheet", [row])
+    parsed = parse_standard_bol_excel(upload)[0]
+    assert parsed.dc_street == "123 Test St"
+    assert parsed.wm_po == "TGT-001"
+    assert parsed.total_weight == "100"
+    assert parsed.weight_each == "50"
+
+
+def test_expanded_aliases_detect_unnamed_load_sheet() -> None:
+    row = _standard_load_row()
+    replacements = {
+        "KK Load": "KKG Load Number", "Carrier": "Carier", "KK PO#": "KKG PO Number",
+        "BOL #": "Bill of Lading Number", "DC #": "DC ID", "DC NAME": "Consignee Name",
+        "DC STREET": "DC Adress", "TGT PO #": "WMT Purchase Order", "UPC": "UPC Code",
+        "Pallet Description": "Item Descripton", "QTY": "Unit Quantity",
+        "TOTAL PALLETS": "Pallet Count", "Total Weight": "Total Wieght",
+    }
+    row = {replacements.get(key, key): value for key, value in row.items()}
+    parsed = parse_standard_bol_excel(_workbook_with_sheet("Operational Data", [row]))[0]
+    assert parsed.kk_load == "KL-001"
+    assert parsed.plt_qty == "2"
+    assert parsed.unit_qty == "10"
 
 
 def _workbook_with_sheet(sheet_name: str, rows: list[dict[str, object]]) -> BytesIO:

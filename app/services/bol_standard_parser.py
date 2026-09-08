@@ -186,10 +186,37 @@ OPTIONAL_COLUMN_SPECS: dict[str, dict[str, str | list[str]]] = {
 }
 
 DC_CITY_STATE_ZIP_COMPONENT_SPECS: dict[str, tuple[str, ...]] = {
-    "dc_city": ("DC CITY", "DC City"),
-    "dc_state": ("DC ST", "DCST", "DC STATE", "DC State"),
-    "dc_zip": ("DC ZIP", "DCZIP", "DC Zip"),
+    "dc_city": ("DC CITY", "DC Town", "Destination City", "Ship To City", "Consignee City"),
+    "dc_state": ("DC ST", "DC STATE", "Destination State", "Ship To State", "Consignee State"),
+    "dc_zip": ("DC ZIP", "DC Zip Code", "DC Postal Code", "Destination Zip", "Ship To Zip", "Consignee Zip"),
 }
+
+# Keep semantic and spelling variants explicit: fuzzy matching can silently map
+# a different field (for example, unit weight to total weight).
+ADDITIONAL_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
+    "bol_number": ("BOL", "BOL Number", "BOL No", "Bill of Lading", "Bill of Lading Number", "Bill of Landing #"),
+    "ship_date": ("Shipping Date", "Shipment Date", "Date Shipped", "Shiping Date"),
+    "carrier": ("Carrier Name", "Shipping Carrier", "Carier", "Carrrier"),
+    "kk_load": ("KK Load Number", "KK Load No", "KKG Load Number", "KKG Load No"),
+    "kk_po": ("KK PO Number", "KK PO No", "KK Purchase Order", "KKG PO", "KKG PO #", "KKG PO Number", "KKG Purchase Order"),
+    "wm_po": ("WMT PO", "WMT PO #", "WMT PO Number", "WMT Purchase Order", "Wal Mart PO #"),
+    "dc_number": ("DC Number", "DC No", "DC ID", "Distribution Center #", "Distribution Centre Number"),
+    "dc_name": ("Distribution Center Name", "Distribution Centre Name", "Destination Name", "Ship To Name", "Consignee Name"),
+    "dc_street": ("DC ADDRESS", "DC Street Address", "DC Address 1", "DC Address Line 1", "DC Addr", "DC Adress", "DC Addres", "DC Steet", "Distribution Center Address", "Distribution Centre Address", "Destination Address", "Ship To Address", "Consignee Address"),
+    "dc_city_state_zip": ("DC City ST Zip", "DC City State Zip Code", "Destination City State Zip", "Ship To City State Zip", "Consignee City State Zip"),
+    "item_number": ("Item", "Item Number", "Item No", "SKU", "SKU #", "Product Number", "Product #"),
+    "upc": ("UPC #", "UPC Number", "UPC Code", "Universal Product Code", "Barcode", "Bar Code"),
+    "item_description": ("Item Description", "Product Description", "Description", "Pallet Desc", "Item Desc", "Pallet Descripton", "Pallet Desciption", "Item Descripton"),
+    "unit_qty": ("Unit Quantity", "Units", "Total Units", "Quantity", "Unit Quanity", "Unit Quanitity"),
+    "plt_qty": ("Pallet Quantity", "PLT Quantity", "Pallet Count", "Number of Pallets", "Pallets", "Pallet Quanity", "Pallet Quanitity"),
+    "weight_each": ("Each Weight", "Unit Weight", "Weight Per Unit", "Weight EA", "WT Each", "Each WT", "Wieght Each", "Weigth Each"),
+    "carrier_pro_number": ("Load Number", "Load No", "Carrier PRO", "Carrier PRO Number", "PRO #", "PRO Number"),
+    "total_weight": ("Weight", "Total WT", "Total Weight Lbs", "Total Wieght", "Total Weigth"),
+    "pickup_number": ("Pickup Number", "Pick Up Number", "Pickup No", "Delivery Appt No", "Delivery Appointment No", "Delivery Appoinment #"),
+}
+for _field, _aliases in ADDITIONAL_COLUMN_ALIASES.items():
+    _specs = REQUIRED_COLUMN_SPECS if _field in REQUIRED_COLUMN_SPECS else OPTIONAL_COLUMN_SPECS
+    _specs[_field]["fallback_aliases"].extend(_aliases)
 
 LOAD_SHEET_HEADER_SCAN_COLUMNS: tuple[str, ...] = (
     "KK Load",
@@ -299,7 +326,7 @@ def _resolve_kk_load_columns(
 ) -> list[str]:
     resolved_lookups = lookups or _build_column_lookups(columns)
     resolved_columns: list[str] = []
-    for candidate in KK_LOAD_COLUMN_PRIORITY:
+    for candidate in (*KK_LOAD_COLUMN_PRIORITY, *ADDITIONAL_COLUMN_ALIASES["kk_load"]):
         source_column = _resolve_column_name(resolved_lookups, candidate, ())
         if source_column is not None and source_column not in resolved_columns:
             resolved_columns.append(source_column)
@@ -309,7 +336,10 @@ def _resolve_kk_load_columns(
 def _resolve_plt_qty_column(
     lookups: tuple[dict[str, str], dict[str, str], dict[str, str]],
 ) -> str | None:
-    explicit_column = _resolve_column_name(lookups, "PLT QTY", PLT_QTY_EXPLICIT_ALIASES)
+    explicit_column = _resolve_column_name(
+        lookups, "PLT QTY",
+        (*PLT_QTY_EXPLICIT_ALIASES, *ADDITIONAL_COLUMN_ALIASES["plt_qty"]),
+    )
     if explicit_column is not None:
         return explicit_column
     return _resolve_column_name(lookups, "QTY", PLT_QTY_GENERIC_ALIASES[1:])
@@ -329,6 +359,8 @@ def _is_generic_wm_po_candidate(column: str) -> bool:
         "BOL#",
         "BOLNUMBER",
     }:
+        return False
+    if compact.startswith(("KKPO", "KKGPO", "KKPURCHASEORDER", "KKGPURCHASEORDER")):
         return False
 
     if "PO" not in compact and "PURCHASEORDER" not in compact and compact != "RETAILER":
@@ -464,26 +496,9 @@ def _resolve_columns(columns: list[str], worksheet_name: str) -> dict[str, str]:
 
 
 def _load_sheet_header_score(columns: list[str]) -> int:
-    resolved_columns = [str(col) for col in columns]
-    detected_headers = {
-        _normalize_header(header)
-        for header in resolved_columns
-        if not str(header).startswith("Unnamed:")
-    }
-    detected_compact_headers = {
-        _normalize_header_compact(header)
-        for header in resolved_columns
-        if not str(header).startswith("Unnamed:")
-    }
-
-    score = 0
-    for expected_header in LOAD_SHEET_HEADER_SCAN_COLUMNS:
-        if (
-            _normalize_header(expected_header) in detected_headers
-            or _normalize_header_compact(expected_header) in detected_compact_headers
-        ):
-            score += 1
-    return score
+    resolved, _ = _resolve_columns_with_missing(columns, "")
+    # Count source columns once even when QTY supplies both quantity fields.
+    return len(set(resolved.values()))
 
 
 def _resolve_load_sheet_name(workbook: pd.ExcelFile) -> str:
