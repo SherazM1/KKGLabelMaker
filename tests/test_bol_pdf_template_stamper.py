@@ -575,6 +575,39 @@ def test_multistop_template_stamper_creates_pdf(tmp_path: Path) -> None:
     assert text.count("TOTALS") == 1
 
 
+def test_no_recourse_multistop_preserves_reference_form_and_three_stops(tmp_path: Path) -> None:
+    from dataclasses import replace
+
+    record = _multistop_record()
+    record.stops.append(replace(record.stops[0], dc_number="0587", target_po_number="PO-0587"))
+    record.delivery_3_dc = "TARGET DC 0587"
+    record.delivery_3_address = "12905 E L AVE\nGALESBURG, MI 49053"
+    record.bill_to.company = "Example Broker LLC"
+    source = tmp_path / "no_recourse_multistop.docx"
+    source.write_bytes(b"placeholder")
+    generated = MultistopGeneratedDocxFile(
+        bol_number=record.bol_number, file_name=source.name, file_path=str(source),
+        document_type="combined", load_number=record.load_number, stop_number=None,
+    )
+    result = stamp_bol_pdf_set(
+        [record], BOL_FACILITY_LOOKUP[BOL_FACILITY_OPTIONS[0]], [generated],
+        mode="Multistop", multistop_no_recourse=True, output_dir=tmp_path,
+    )
+    assert result.failed_count == 0
+    text = _pdf_text(result.converted_files[0].file_path)
+    for expected in (
+        "UNIFORM BILL OF LADING", "CUSTOMER NOTE:", "Shipper Signature:",
+        "Driver Signature:", "Receiver Signature:", "DELIVERY #3", "PO-0587",
+        "GALESBURG, MI 49053", "EXAMPLE BROKER LLC", "LOAD-001",
+        "This provision shall survive delivery", "CASE",
+    ):
+        assert expected in text
+    assert "TRIDENT TRANSPORT" not in text
+    assert "The property described below" not in text
+    assert text.count("BROKER PAYMENT & NO RECOURSE NOTICE") == 1
+    assert text.count("TOTALS") == 1
+
+
 def test_multistop_template_stamper_does_not_configure_whiteout_boxes() -> None:
     boxes = [
         *MULTISTOP_CONFIG.fields.values(),

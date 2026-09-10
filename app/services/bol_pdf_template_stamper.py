@@ -358,7 +358,7 @@ def _standard_fields() -> dict[str, TextBox]:
         ),
         "seal_number": _top_value_box(573.6),
         "appointment_number": _box_for_baseline(x=112.5, baseline=454.1, width=210.0, font_size=8.5, min_font_size=6.5),
-        "dc_number": _box_for_baseline(x=112.5, baseline=445.0, width=210.0, font_size=8.5, min_font_size=6.5),
+        "dc_number": _box_for_baseline(x=112.5, baseline=450.0, width=210.0, font_size=8.5, min_font_size=6.5),
     }
 
 
@@ -484,33 +484,32 @@ MULTISTOP_CONFIG = PdfTemplateConfig(
         "kk_po_number": _top_value_box(653.2),
         "kk_load_number": _top_value_box(638.2),
         "comments": _box_for_baseline(x=444.4, baseline=606.7, width=128.0, height=18.0, font_size=7.8, min_font_size=5.2, multiline=True),
-        "ship_from_company": TextBox(92, 604, 242, 13, 7.5),
-        "ship_from_street": TextBox(92, 584, 242, 13, 7.5),
-        "ship_from_city_state_zip": TextBox(92, 565, 242, 13, 7.5),
-        "bill_to": _box_for_baseline(x=360, baseline=510.0, width=205, height=58.0, font_size=7.0, min_font_size=5.0, multiline=True),
-        "delivery_1_dc": _box_for_baseline(x=103.5, baseline=556.5, width=145.0, font_size=7.4),
-        "delivery_1_address": _box_for_baseline(x=103.5, baseline=538.7, width=220.0, height=22.0, font_size=7.0, min_font_size=5.0, multiline=True),
-        "delivery_2_dc": _box_for_baseline(x=103.5, baseline=521.4, width=145.0, font_size=7.4),
-        "delivery_2_address": _box_for_baseline(x=103.5, baseline=504.9, width=220.0, height=22.0, font_size=7.0, min_font_size=5.0, multiline=True),
-        "delivery_3_dc": _box_for_baseline(x=103.5, baseline=487.0, width=145.0, font_size=7.4),
-        "delivery_3_address": _box_for_baseline(x=103.5, baseline=467.8, width=220.0, height=22.0, font_size=7.0, min_font_size=5.0, multiline=True),
+        "ship_from_street": TextBox(92, 635.0, 242, 13, 7.5),
+        "ship_from_city_state_zip": TextBox(92, 580, 242, 13, 7.5),
+        "bill_to": _box_for_baseline(x=360, baseline=475.0, width=205, height=58.0, font_size=10.0, min_font_size=7.0, multiline=True),
+        "delivery_1_dc": _box_for_baseline(x=103.5, baseline=556.5, width=145.0, font_size=7.4, bold = True),
+        "delivery_1_address": _box_for_baseline(x=103.5, baseline=538.7, width=220.0, height=22.0, font_size=7.0, min_font_size=5.0, multiline=False),
+        "delivery_2_dc": _box_for_baseline(x=103.5, baseline=521.4, width=145.0, font_size=7.4, bold = True),
+        "delivery_2_address": _box_for_baseline(x=103.5, baseline=504.9, width=220.0, height=22.0, font_size=7.0, min_font_size=5.0, multiline=False),
+        "delivery_3_dc": _box_for_baseline(x=103.5, baseline=487.0, width=145.0, font_size=7.4, bold = True),
+        "delivery_3_address": _box_for_baseline(x=103.5, baseline=467.8, width=220.0, height=22.0, font_size=7.0, min_font_size=5.0, multiline=False),
     }),
     item_columns=_without_whiteout_map({
-        "dc": TextBox(34, 0, 42, 0, 7.0, align="center"),
-        "case": TextBox(78, 0, 46, 0, 7.0, align="center"),
-        "po": TextBox(126, 0, 83, 0, 6.6, align="center"),
-        "description": TextBox(212, 0, 194, 0, 6.3, multiline=True),
-        "pallet": TextBox(408, 0, 66, 0, 7.0, align="center"),
-        "weight": TextBox(476, 0, 85, 0, 7.0, align="center"),
+        "dc": TextBox(37, 0, 42, 0, 10.0, align="center"),
+        "case": TextBox(94, 0, 54, 0, 10.0, align="center"),
+        "po": TextBox(149, 0, 83, 0, 9.0, align="center"),
+        "description": TextBox(270, 0, 194, 0, 8.6, min_font_size = 7.0, multiline=True),
+        "pallet": TextBox(485, 0, 66, 0, 10.0, align="center"),
+        "weight": TextBox(535, 0, 85, 0, 10.0, align="center"),
     }),
     item_start_y=0,
     item_row_height=17.0,
     max_item_rows=3,
     totals=_without_whiteout_map({
-        "case": _box_for_baseline(x=78, baseline=99.9, width=46, height=12.0, font_size=7.4, bold=True, align="center"),
-        "label": _box_for_baseline(x=212, baseline=99.9, width=194, height=12.0, font_size=7.4, bold=True, align="center"),
-        "pallet": _box_for_baseline(x=408, baseline=99.9, width=66, height=12.0, font_size=7.4, bold=True, align="center"),
-        "weight": _box_for_baseline(x=476, baseline=99.9, width=85, height=12.0, font_size=7.4, bold=True, align="center"),
+        "case": _box_for_baseline(x=94, baseline=99.9, width=46, height=12.0, font_size=10.5, bold=True, align="center"),
+        "label": _box_for_baseline(x=270, baseline=99.9, width=194, height=12.0, font_size=10.5, bold=True, align="center"),
+        "pallet": _box_for_baseline(x=485, baseline=99.9, width=66, height=12.0, font_size=10.5, bold=True, align="center"),
+        "weight": _box_for_baseline(x=535, baseline=99.9, width=85, height=12.0, font_size=10.5, bold=True, align="center"),
     }),
     item_row_baselines=(277.7, 253.3, 229.1),
 )
@@ -923,6 +922,8 @@ def _draw_standard_overlay(
     batch_comment: str | None,
     render_pickup_number: bool = True,
 ) -> None:
+    if config.mode == "No Recourse":
+        _draw_no_recourse_driver_date(canv)
     record_values = (
         _no_recourse_record_values(
             record,
@@ -996,7 +997,7 @@ def _draw_standard_overlay(
                     detail_size=8.0,
                     min_description_size=7.0,
                     min_detail_size=6.6,
-                    leading=10.6,
+                    leading=20,
                     second_line_y_offset=10.0 if row_offset == 0 else 0.0,
                 )
                 continue
@@ -1024,10 +1025,11 @@ def _multistop_record_values(
             record.bill_to.company,
             record.bill_to.street,
             record.bill_to.city_state_zip,
-            "Attn:",
+            
         )
         if _safe_text(part)
     )
+    
     return {
         "bol_number": record.bol_number,
         "ship_date": _format_ship_date_for_template(record.ship_date),
@@ -1036,17 +1038,293 @@ def _multistop_record_values(
         "kk_po_number": record.kk_po_number,
         "kk_load_number": record.kk_load_number,
         "comments": comment,
-        "ship_from_company": selected_facility["facility_name"],
         "ship_from_street": selected_facility["address"],
-        "ship_from_city_state_zip": selected_facility["location"],
+        "ship_from_city_state_zip": "",
         "bill_to": bill_to_lines,
+        
         "delivery_1_dc": record.delivery_1_dc,
-        "delivery_1_address": record.delivery_1_address,
+        "delivery_1_address": " ".join(
+    _safe_text(record.delivery_1_address).splitlines()),
+        
         "delivery_2_dc": record.delivery_2_dc,
-        "delivery_2_address": record.delivery_2_address,
+        "delivery_2_address": " ".join(
+    _safe_text(record.delivery_2_address).splitlines()),
+        
         "delivery_3_dc": record.delivery_3_dc,
-        "delivery_3_address": record.delivery_3_address,
+        "delivery_3_address": " ".join(
+    _safe_text(record.delivery_3_address).splitlines()),
     }
+    
+def _multistop_pdf_description(stop) -> str:
+        description = _safe_text(stop.pallet_description)
+        item_number = _safe_text(stop.item_number)
+        upc = _safe_text(stop.upc)
+
+        details = []
+
+        if item_number:
+            details.append(f"Item #: {item_number}")
+
+        if upc:
+            details.append(f"UPC #: {upc}")
+
+        detail_line = "    ".join(details)
+
+        return "\n".join(
+            value
+            for value in (description, detail_line)
+            if value
+    )
+def _draw_multistop_description(
+        canv: canvas.Canvas,
+        box: TextBox,
+        stop,
+    ) -> None:
+        description = _safe_text(stop.pallet_description)
+
+        details = []
+
+        if _safe_text(stop.item_number):
+            details.append(f"Item #: {_safe_text(stop.item_number)}")
+
+        if _safe_text(stop.upc):
+            details.append(f"UPC #: {_safe_text(stop.upc)}")
+
+        detail_line = "    ".join(details)
+
+        description_size = _fit_font_size(
+            canv,
+            description,
+            FONT_NAME,
+            7.5,
+            box.width,
+            6.0,
+        )
+
+        detail_size = _fit_font_size(
+            canv,
+            detail_line,
+            FONT_NAME,
+            6.8,
+            box.width,
+            5.5,
+        )
+
+        first_y = box.y + box.height - 6.0
+        second_y = first_y - 8.0
+
+        if description:
+            canv.setFont(FONT_NAME, description_size)
+            canv.drawString(box.x, first_y, description)
+
+        if detail_line:
+            canv.setFont(FONT_NAME, detail_size)
+            canv.drawString(box.x, second_y, detail_line)
+            
+def _draw_multistop_no_recourse_footer(
+    canv: canvas.Canvas,
+    record: BolMultistopRecord,
+) -> None:
+    # Clear the existing bottom signature/customer-note area.
+    canv.saveState()
+    canv.setFillColor(colors.white)
+    canv.setStrokeColor(colors.white)
+    canv.rect(
+        10,
+        5,
+        592,
+        82,
+        stroke=0,
+        fill=1,
+    )
+    canv.restoreState()
+
+    # Signature labels
+    canv.setFont(FONT_BOLD, 7.5)
+    canv.drawString(22, 75, "Driver Signature:")
+    canv.drawString(385, 75, "Receiver Signature:")
+
+    # Notice title
+    canv.setFont(FONT_BOLD, 8.5)
+    canv.drawCentredString(
+        PAGE_WIDTH / 2,
+        58,
+        "BROKER PAYMENT & NO RECOURSE NOTICE",
+    )
+
+    # Broker of Record
+    broker_name = _safe_text(record.bill_to.company).upper()
+
+    canv.setFont(FONT_NAME, 6.8)
+    canv.drawCentredString(
+        PAGE_WIDTH / 2,
+        45,
+        f"Broker of Record: {broker_name}",
+    )
+
+    notice_text = (
+        "Freight charges for this shipment are to be paid solely by the Broker "
+        "of Record. Carrier agrees that it shall look exclusively to the Broker "
+        "for payment of freight charges and hereby waives any right of recourse "
+        "against Kendal King Group for unpaid freight charges. Payment by Kendal "
+        "King Group to Broker shall constitute full satisfaction of Shipper's "
+        "freight payment obligation. Carrier acknowledges and agrees that it has "
+        "no lien, claim, or right to pursue Kendal King Group for unpaid freight "
+        "charges. This provision shall survive delivery and any termination of "
+        "transportation services."
+    )
+
+    notice_box = TextBox(
+        x=22,
+        y=8,
+        width=568,
+        height=30,
+        font_size=8.5,
+        min_font_size=7.5,
+        align="center",
+        multiline=True,
+        leading=6.2,
+        whiteout=False,
+        vertical_align="top",
+    )
+
+    _draw_box_value(
+        canv,
+        notice_box,
+        notice_text,
+    )
+
+MULTISTOP_STANDARD_TERMS = (
+    "The property described below in apparent good order, except as noted "
+    "(contents and condition of contents of packages unknown), marked, consigned, "
+    "and destined as indicated below which said carrier (the word carrier being "
+    "understood throughout this contract as meaning any person or corporation in "
+    "possession of the property under the contract) agrees to carry to its usual "
+    "place of delivery at said destination, if on its route otherwise to deliver "
+    "to another carrier on the route to said destination. It is mutually agreed "
+    "as to each carrier of all or any of said property over all are any portion "
+    "of said route to destination, and as to each party at any time interested "
+    "in all or any said property, that every service to be performed hereunder "
+    "shall be subject to all the terms and conditions of the Uniform Domestic "
+    "Straight Bill of Lading set forth (1) in Uniform Freight Classifications in "
+    "effect on the date hereof, if this is a rail or rail-water shipment, or (2) "
+    "in the applicable motor carrier classification or tariff if this is a motor "
+    "carrier shipment. Shipper hereby certifies that he is familiar with all the "
+    "terms and conditions of the said bill of lading, set forth in the "
+    "classification or tariff which governs the transportation of this shipment, "
+    "and the said terms and conditions are hereby agreed to by the shipper and "
+    "accepted for himself and his assigns."
+)
+
+MULTISTOP_NO_RECOURSE_TERMS = (
+    "The transportation of the property described herein is tendered and accepted "
+    "subject to applicable federal transportation law and the written agreements "
+    "between the Parties. In the event of any conflict between this Bill of Lading "
+    "and any other document, the applicable written contract between Kendal King "
+    "Group and the Broker of Record shall control. Nothing herein shall be construed "
+    "to impose payment responsibility on Kendal King Group beyond its obligation "
+    "to pay the Broker of Record in accordance with the governing agreement."
+)
+
+def _value_means_no_recourse(value: Any) -> bool:
+    """Return True when a string-like value clearly identifies No Recourse."""
+    normalized = re.sub(r"[^a-z0-9]+", "", _safe_text(value).casefold())
+    return "norecourse" in normalized
+
+
+def _resolve_multistop_no_recourse(
+    *,
+    explicit: bool | None,
+    mode: str | None,
+    bol_type: str | None,
+    generated_file: Any = None,
+    record: Any = None,
+    source_docx: Path | None = None,
+) -> bool:
+    """Resolve whether the current Multistop BOL is the No Recourse variant.
+
+    The explicit flag is authoritative. The remaining checks are compatibility
+    fallbacks for callers/models that already carry a No Recourse marker.
+    """
+    if explicit is not None:
+        return bool(explicit)
+
+    # Boolean flags that may already exist on generated-file or record models.
+    for obj in (generated_file, record):
+        if obj is None:
+            continue
+        for attr in (
+            "multistop_no_recourse",
+            "no_recourse",
+            "is_no_recourse",
+        ):
+            value = getattr(obj, attr, None)
+            if isinstance(value, bool):
+                return value
+
+    # String markers that may already be present in the pipeline.
+    candidates: list[Any] = [mode, bol_type]
+    if source_docx is not None:
+        candidates.append(source_docx.stem)
+
+    for obj in (generated_file, record):
+        if obj is None:
+            continue
+        for attr in (
+            "mode",
+            "bol_mode",
+            "bol_variant",
+            "template_mode",
+            "document_mode",
+            "document_type",
+        ):
+            candidates.append(getattr(obj, attr, None))
+
+    return any(_value_means_no_recourse(value) for value in candidates)
+
+
+def _draw_multistop_terms(
+    canv: canvas.Canvas,
+    no_recourse: bool,
+) -> None:
+    terms_text = (
+        MULTISTOP_NO_RECOURSE_TERMS
+        if no_recourse
+        else MULTISTOP_STANDARD_TERMS
+    )
+
+    # Cover the paragraph already printed in the PDF template.
+    canv.saveState()
+    canv.setFillColor(colors.white)
+    canv.setStrokeColor(colors.white)
+    canv.rect(
+        22,
+        312,
+        568,
+        65,
+        stroke=0,
+        fill=1,
+    )
+    canv.restoreState()
+
+    terms_box = TextBox(
+        x=25,
+        y=314,
+        width=560,
+        height=60,
+        font_size=8.5,
+        min_font_size=7.5,
+        multiline=True,
+        leading=7.6,
+        whiteout=False,
+        vertical_align="top",
+    )
+
+    _draw_box_value(
+        canv,
+        terms_box,
+        terms_text,
+    )
 
 
 def _draw_multistop_overlay(
@@ -1055,42 +1333,175 @@ def _draw_multistop_overlay(
     record: BolMultistopRecord,
     selected_facility: BolFacilityRecord,
     *,
+    no_recourse: bool,
     batch_comment: str | None,
 ) -> None:
-    values = _multistop_record_values(record, selected_facility, batch_comment)
-    for field_name, box in config.fields.items():
-        _draw_box_value(canv, box, values.get(field_name, ""))
+    if no_recourse:
+        _draw_no_recourse_multistop_overlay(canv, record, selected_facility, batch_comment)
+        return
+    # Draw the top Multistop fields
+    values = _multistop_record_values(
+        record,
+        selected_facility,
+        batch_comment,
+    )
 
-    for row_offset, stop in enumerate(record.stops[: config.max_item_rows]):
+    for field_name, box in config.fields.items():
+        _draw_box_value(
+            canv,
+            box,
+            values.get(field_name, ""),
+        )
+
+    # Draw Standard or No Recourse paragraph
+    _draw_multistop_terms(canv, no_recourse)
+
+    # Draw each delivery/item row
+    for row_offset, stop in enumerate(
+        record.stops[: config.max_item_rows]
+    ):
         row_baseline = (
             config.item_row_baselines[row_offset]
             if row_offset < len(config.item_row_baselines)
             else config.item_start_y - row_offset * config.item_row_height
         )
+
         row_values = {
             "dc": stop.dc_number,
             "case": stop.cases,
             "po": stop.target_po_number,
-            "description": _format_multistop_item_description(
-                stop.pallet_description,
-                stop.item_number,
-                stop.upc,
-            ),
+            "description": _multistop_pdf_description(stop),
             "pallet": stop.total_pallets,
             "weight": stop.weight,
         }
+
         for column_name, value in row_values.items():
             base_box = config.item_columns[column_name]
-            box = _box_at_row_baseline(base_box, row_baseline, config.item_row_height - 3)
-            _draw_box_value(canv, box, value)
+            box = _box_at_row_baseline(
+                base_box,
+                row_baseline,
+                config.item_row_height - 3,
+            )
 
+            if column_name == "description":
+                _draw_multistop_description(
+                    canv,
+                    box,
+                    stop,
+                )
+                continue
+
+            _draw_box_value(
+                canv,
+                box,
+                value,
+            )
+
+    # Draw totals at the bottom
     for total_name, value in {
         "case": _format_number(record.total_case),
         "label": "TOTALS",
         "pallet": _format_number(record.total_pallet),
         "weight": _format_number(record.total_ship_weight),
     }.items():
-        _draw_box_value(canv, config.totals[total_name], value)
+        _draw_box_value(
+            canv,
+            config.totals[total_name],
+            value,
+        )
+
+    # Draw the No Recourse footer only for No Recourse Multistop.
+    if no_recourse:
+        _draw_multistop_no_recourse_footer(
+            canv,
+            record,
+        )
+
+def _draw_no_recourse_driver_date(canv: canvas.Canvas) -> None:
+    """Leave a handwritten date field below the reference form's driver signature."""
+    canv.saveState()
+    canv.setFillColor(colors.black)
+    canv.setStrokeColor(colors.black)
+    canv.setFont(FONT_BOLD, 8.5)
+    canv.drawString(35, 121, "Date:")
+    canv.setLineWidth(0.5)
+    canv.line(60, 119, 175, 119)
+    canv.restoreState()
+
+
+def _draw_no_recourse_multistop_overlay(
+    canv: canvas.Canvas,
+    record: BolMultistopRecord,
+    selected_facility: BolFacilityRecord,
+    batch_comment: str | None,
+) -> None:
+    """Keep the reference form's typography, terms and footer for combined loads."""
+    config = NO_RECOURSE_CONFIG
+    _draw_no_recourse_driver_date(canv)
+    values = _multistop_record_values(record, selected_facility, batch_comment)
+    ship_from = facility_to_ship_from(selected_facility)
+    values.update(
+        ship_from_company=ship_from.company,
+        ship_from_street=ship_from.street,
+        ship_from_city_state_zip=ship_from.city_state_zip,
+        carrier_pro_number=record.load_number,
+    )
+    for name, box in config.fields.items():
+        if not name.startswith("consignee_") and name != "dc_number":
+            _draw_box_value(canv, box, values.get(name, ""))
+
+    # Replace only the consignee interior; keep the surrounding form borders.
+    canv.saveState()
+    canv.setFillColor(colors.white)
+    canv.rect(22.5, 496.5, 313, 101, stroke=0, fill=1)
+    canv.restoreState()
+    for index in range(1, 4):
+        baseline = 588.0 - (index - 1) * 32.0
+        canv.saveState()
+        canv.setStrokeColor(colors.black)
+        canv.setLineWidth(0.5)
+        canv.line(107, baseline - 3, 335.5, baseline - 3)
+        canv.line(107, baseline - 25, 335.5, baseline - 25)
+        canv.restoreState()
+        _draw_box_value(canv, _without_whiteout(_box_for_baseline(
+            x=29, baseline=baseline, width=78, font_size=8.0, bold=True,
+        )), f"DELIVERY #{index}")
+        _draw_box_value(canv, _without_whiteout(_box_for_baseline(
+            x=112.5, baseline=baseline, width=218, font_size=8.7, min_font_size=6.5,
+        )), values[f"delivery_{index}_dc"])
+        _draw_box_value(canv, TextBox(
+            112.5, baseline - 23, 218, 22, 8.0, min_font_size=6.5,
+            multiline=True, leading=10, whiteout=False,
+        ), values[f"delivery_{index}_address"])
+
+    _draw_box_value(canv, config.item_columns["qty_header"], "DC")
+    for index, stop in enumerate(record.stops[:3]):
+        baseline = config.item_row_baselines[index]
+        for column, value in {
+            "qty": stop.dc_number, "type": stop.cases, "po": stop.target_po_number,
+            "skids": stop.total_pallets, "weight": stop.weight,
+        }.items():
+            _draw_box_value(canv, _box_at_row_baseline(config.item_columns[column], baseline, 20), value)
+        _draw_two_line_item_description(
+            canv, _box_at_row_baseline(config.item_columns["description"], baseline, 20),
+            BolStandardItemLine(source_row_number=0, pallet_qty=stop.cases, type="",
+                                po_number=stop.target_po_number, skids=stop.total_pallets,
+                                weight_each=stop.weight, item_description=stop.pallet_description,
+                                item_number=stop.item_number, upc=stop.upc),
+            description_size=9.0, detail_size=8.0, min_description_size=7.2,
+            min_detail_size=6.8, leading=10.8,
+            second_line_y_offset=3.5 if index == 0 else 0,
+        )
+    for name, value in {
+        "qty": "", "label": "TOTALS", "skids": _format_number(record.total_pallet),
+        "weight": _format_number(record.total_ship_weight),
+    }.items():
+        _draw_box_value(canv, config.totals[name], value)
+    _draw_box_value(canv, replace(config.totals["qty"], x=108, width=36),
+                    _format_number(record.total_case))
+    _draw_box_value(canv, _box_for_baseline(
+        x=34, baseline=78, width=550, font_size=9, align="center",
+    ), f"Broker of Record: {_safe_text(record.bill_to.company).upper()}")
 
 
 def _create_overlay_pdf(
@@ -1113,6 +1524,7 @@ def _stamp_template_pdf(
     destination_pdf: Path,
     draw_callback: Callable[[canvas.Canvas], None],
     strip_known_tokens: bool = False,
+    template_text_replacements: dict[str, str] | None = None,
 ) -> None:
     destination_pdf.parent.mkdir(parents=True, exist_ok=True)
     template_reader = PdfReader(str(template_path))
@@ -1124,12 +1536,76 @@ def _stamp_template_pdf(
 
     template_page = writer.pages[0]
     _strip_template_placeholder_text(template_page, strip_known_tokens=strip_known_tokens)
+
+    if template_text_replacements:
+        _replace_template_text(
+            template_page,
+            template_text_replacements,
+        )
+
     overlay_buffer = _create_overlay_pdf(template_page, draw_callback)
     overlay_reader = PdfReader(overlay_buffer)
     template_page.merge_page(overlay_reader.pages[0])
 
     with destination_pdf.open("wb") as output_file:
         writer.write(output_file)
+
+
+def _replace_template_text(
+    page: Any,
+    replacements: dict[str, str],
+) -> None:
+    """Replace literal text inside the original PDF content stream.
+
+    This changes the existing template text in place, preserving the
+    template's original position, font, and border lines.
+    """
+    content = page.get_contents()
+    if content is None:
+        return
+
+    content_stream = ContentStream(content, page.pdf)
+
+    for operands, operator in content_stream.operations:
+        if operator in (b"Tj", b"'", b'"') and operands:
+            value = operands[0]
+            if isinstance(value, str):
+                updated = value
+                for old_text, new_text in replacements.items():
+                    updated = updated.replace(old_text, new_text)
+                if updated != value:
+                    operands[0] = TextStringObject(updated)
+
+        elif operator == b"TJ" and operands:
+            text_array = operands[0]
+            if not isinstance(text_array, ArrayObject):
+                continue
+
+            joined_text = "".join(
+                value
+                for value in text_array
+                if isinstance(value, str)
+            )
+
+            updated = joined_text
+            for old_text, new_text in replacements.items():
+                updated = updated.replace(old_text, new_text)
+
+            if updated == joined_text:
+                continue
+
+            # Preserve the original TJ positioning/font. Put the replacement
+            # into the first text fragment and blank the remaining fragments.
+            first_text_index: int | None = None
+            for index, value in enumerate(text_array):
+                if isinstance(value, str):
+                    if first_text_index is None:
+                        first_text_index = index
+                        text_array[index] = TextStringObject(updated)
+                    else:
+                        text_array[index] = TextStringObject("")
+
+    page[NameObject("/Contents")] = content_stream
 
 
 def _strip_template_placeholder_text(page: Any, *, strip_known_tokens: bool = False) -> None:
@@ -1244,6 +1720,7 @@ def stamp_bol_pdf_set(
     *,
     mode: str,
     bol_type: str | None = None,
+    multistop_no_recourse: bool | None = None,
     qty_type: str = "PLT",
     batch_comment: str | None = None,
     render_pickup_number: bool = True,
@@ -1294,15 +1771,35 @@ def stamp_bol_pdf_set(
                 )
                 if record is None:
                     raise RuntimeError("Matching multistop BOL record was not found for PDF stamping.")
+                resolved_multistop_no_recourse = _resolve_multistop_no_recourse(
+                    explicit=multistop_no_recourse,
+                    mode=mode,
+                    bol_type=bol_type,
+                    generated_file=generated_file,
+                    record=record,
+                    source_docx=source_docx,
+                )
+
                 _stamp_template_pdf(
-                    template_path=config.template_path,
+                    template_path=NO_RECOURSE_PDF_TEMPLATE_PATH if resolved_multistop_no_recourse else config.template_path,
                     destination_pdf=destination_pdf,
                     strip_known_tokens=True,
-                    draw_callback=lambda canv, record=record: _draw_multistop_overlay(
+                    # Keep Standard Multistop and No-Recourse Multistop on the
+                    # exact same shipper layout. The template already owns the COMPANY
+                    # row, so replace its literal value in place rather than drawing a
+                    # second company value lower in the shipper block.
+                    template_text_replacements={
+                        "KENDAL KING C/O": _safe_text(selected_facility["facility_name"]),
+                        **({"Type": "CASE", "Carrier Pro": "Load",
+                            "Broker of Record: ": "", "TRIDENT TRANSPORT,  LLC": ""}
+                           if resolved_multistop_no_recourse else {}),
+                    },
+                    draw_callback=lambda canv, record=record, no_recourse=resolved_multistop_no_recourse: _draw_multistop_overlay(
                         canv,
                         config,
                         record,
                         selected_facility,
+                        no_recourse=no_recourse,
                         batch_comment=batch_comment,
                     ),
                 )
